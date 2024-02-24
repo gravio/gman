@@ -7,10 +7,10 @@ use tabled::grid::records::vec_records::CellInfo;
 
 use std::{fs::File, io::BufReader, path::Path, process::Command};
 
-use crate::candidate::Candidate;
+use crate::candidate::{Candidate, InstallationCandidate, InstalledProduct, TablePrinter};
 use crate::gman_error::MyError;
 use crate::platform::Platform;
-use crate::{get_hubkit_builds, get_studio_builds, product, CandidateRepository, ClientConfig};
+use crate::{get_build_id_by_candidate, get_builds, product, CandidateRepository, ClientConfig};
 
 use tabled::{
     settings::{object::Rows, Alignment, Modify, Style},
@@ -42,28 +42,9 @@ impl Client {
         Ok(config)
     }
 
-    /// Lists the available candidates of Gravio items to install
-    ///
-    /// The list of candidates is retrieved from the repoository server defined in the [ClientConfig]
-    pub async fn list_candidates(
-        &self,
-        name: Option<&str>,
-        version: Option<&str>,
-    ) -> Result<Vec<Candidate>, Box<dyn std::error::Error>> {
-        log::debug!(
-            "Listing candidates: name: {:#?}, version: {:#?}",
-            name,
-            version
-        );
-
-        log::debug!("{:#?}", self.config);
-
+    fn get_valid_repositories_for_platform(&self) -> Vec<&CandidateRepository> {
         /* Platform to restrict our repos to */
-        let platform: Option<&Platform> = if cfg!(windows) {
-            Some(&Platform::Windows)
-        } else {
-            None
-        };
+        let platform: Option<Platform> = Platform::platform_for_current_platform();
 
         let valid_repositories: Vec<&CandidateRepository> = self
             .config
@@ -72,27 +53,62 @@ impl Client {
             .filter(|repo| {
                 (repo.repository_folder.is_some() || repo.repository_server.is_some())
                     && (repo.platforms.is_empty()
-                        || (platform.is_some() && repo.platforms.contains(platform.unwrap())))
+                        || (platform.is_some()
+                            && repo.platforms.contains(platform.as_ref().unwrap())))
             })
             .collect();
 
         if valid_repositories.is_empty() {
             log::warn!("No repositories available for searching. Either no repositories are known that match your current platform, or they dont have folder/server set");
-            return Ok(Vec::new());
         }
 
-        let mut candidates: Vec<Candidate> = Vec::new();
+        valid_repositories
+    }
+
+    /// Lists the available candidates of Gravio items to install
+    ///
+    /// The list of candidates is retrieved from the repoository server defined in the [ClientConfig]
+    pub async fn list_candidates(
+        &self,
+        name: Option<&str>,
+        version: Option<&str>,
+    ) -> Result<Vec<InstallationCandidate>, Box<dyn std::error::Error>> {
+        log::debug!(
+            "Listing candidates: name: {:#?}, version: {:#?}",
+            name,
+            version
+        );
+
+        log::debug!("{:#?}", self.config);
+
+        let mut candidates: Vec<InstallationCandidate> = Vec::new();
         let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
 
-        /* get Hubkits */
-        let mut xyz = get_hubkit_builds(&http_client, &valid_repositories).await?;
-        candidates.append(&mut xyz);
+        let current_platform = Platform::platform_for_current_platform();
+        if current_platform.is_none() {
+            return Err(Box::new(MyError::new(
+                "Cant get candidate builds for platform, current platform is not supported",
+            )));
+        }
+        let current_platform = current_platform.unwrap();
 
-        /* get Studio */
-        let mut xyz = get_studio_builds(&http_client, &valid_repositories).await?;
-        candidates.append(&mut xyz);
+        let valid_repositories = self.get_valid_repositories_for_platform();
 
-        /* fake candidates */
+        let products: Vec<&product::Product> = vec![
+            &*product::PRODUCT_GRAVIO_HUBKIT,
+            &*product::PRODUCT_GRAVIO_STUDIO,
+        ];
+
+        let mut builds = get_builds(
+            &http_client,
+            current_platform,
+            &valid_repositories,
+            &products,
+        )
+        .await?;
+
+        candidates.append(&mut builds);
+
         Ok(candidates)
     }
 
@@ -106,7 +122,7 @@ impl Client {
         let lower_name = name.to_lowercase();
         let installed = self.get_installed();
         let uninstall = installed.iter().find(|candidate| {
-            if candidate.name.to_lowercase() == lower_name {
+            if candidate.product_name.to_lowercase() == lower_name {
                 if let Some(v) = version {
                     &candidate.version == v
                 } else {
@@ -121,7 +137,7 @@ impl Client {
             Some(candidate) => {
                 log::debug!("Found uninstallation target, will attempt an uninstall");
                 candidate.uninstall()?;
-                println!("Successfully uninstalled {}", candidate.product.name);
+                println!("Successfully uninstalled {}", &candidate.product_name);
                 Ok(())
             }
             None => {
@@ -131,14 +147,14 @@ impl Client {
         }
     }
 
-    pub async fn install<'a>(
+    pub async fn install(
         &self,
-        candidate: &Candidate<'a>,
+        candidate: &InstallationCandidate,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!(
             "Setting up installation prep for {} @ {}",
-            &candidate.name,
-            &candidate.version
+            &candidate.product_name,
+            &candidate.version_or_identifier_string()
         );
 
         /* Locate the resource (check if in cache, if not, check online) */
@@ -147,33 +163,45 @@ impl Client {
             log::debug!(
                 "Found installation executable for {}@{} in path",
                 &candidate.name,
-                &candidate.version
+                &candidate.version_or_identifier_string()
             );
         } else {
             /* Download the resource (to cache) */
             log::debug!(
-                "Installation executable for {}@{} not found, attempting to download from repository",
+                "Installation executable for {}@{} not found in cache, attempting to download from repository",
                 &candidate.name,
-                &candidate.version
+                &candidate.version_or_identifier_string()
             );
 
-            let mut downloaded = 0;
-            let total_size = 231231231;
+            let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
 
-            let pb = ProgressBar::new(total_size);
-            pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-        .unwrap()
-        .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
-        .progress_chars("#>-"));
+            let valid_repositories = self.get_valid_repositories_for_platform();
 
-            while downloaded < total_size {
-                let new = min(downloaded + 223211, total_size);
-                downloaded = new;
-                pb.set_position(new);
-                thread::sleep(Duration::from_millis(12));
+            let result =
+                get_build_id_by_candidate(&http_client, candidate, &valid_repositories).await?;
+
+            match result {
+                Some(found) => {
+                    let mut downloaded = 0;
+                    let total_size = 231231231;
+
+                    let pb = ProgressBar::new(total_size);
+                    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                .unwrap()
+                .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
+                .progress_chars("#>-"));
+
+                    while downloaded < total_size {
+                        let new = min(downloaded + 223211, total_size);
+                        downloaded = new;
+                        pb.set_position(new);
+                        thread::sleep(Duration::from_millis(12));
+                    }
+
+                    pb.finish_with_message("downloaded");
+                }
+                None => println!("No candidates found"),
             }
-
-            pb.finish_with_message("downloaded");
         }
 
         /* Launch installer */
@@ -186,7 +214,7 @@ impl Client {
         None
     }
     /// Lists items installed to this machine
-    pub fn get_installed(&self) -> Vec<Candidate> {
+    pub fn get_installed(&self) -> Vec<InstalledProduct> {
         log::debug!("Getting installed Gravio items");
         #[cfg(target_os = "windows")]
         {
@@ -201,8 +229,8 @@ impl Client {
         {}
     }
 
-    fn get_installed_windows(&self) -> Result<Vec<Candidate>, Box<dyn std::error::Error>> {
-        let mut installed: Vec<Candidate> = Vec::new();
+    fn get_installed_windows(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
+        let mut installed: Vec<InstalledProduct> = Vec::new();
         /* get Gravio Studio */
         {
             let command = r#"Get-AppxPackage | Where-Object {$_.Name -match ".*GravioStudio.*" } | Select Name, Version, PackageFullName"#;
@@ -220,20 +248,15 @@ impl Client {
                 if let Some(text) = studio_splits {
                     let vec: Vec<&str> = text.collect();
                     let version = vec[1].trim().to_owned();
-                    let location = vec[2].trim().to_owned();
+                    let package_full_name = vec[2].trim().to_owned();
 
-                    let p = &product::PRODUCT_GRAVIO_STUDIO_WINDOWS;
-
-                    let c = Candidate {
-                        remote_id: None,
-                        name: p.name.to_owned(),
-                        version,
-                        identifier: location,
-                        description: None,
-                        installed: true,
-                        product: p,
+                    let installed_product: InstalledProduct = InstalledProduct {
+                        product_name: product::PRODUCT_GRAVIO_STUDIO.name.to_owned(),
+                        version: version,
+                        package_name: package_full_name,
                     };
-                    installed.push(c);
+
+                    installed.push(installed_product);
                 }
             } else {
                 // Print the error message if the command failed
@@ -285,17 +308,13 @@ impl Client {
                         &key[id_start_idx..id_end_idx + 1]
                     };
 
-                    let p = &product::PRODUCT_GRAVIO_HUBKIT;
-                    let c = Candidate {
-                        remote_id: None,
-                        name: p.name.to_owned(),
-                        version,
-                        identifier: key_name.to_owned(),
-                        description: None,
-                        installed: true,
-                        product: p,
+                    let installed_product = InstalledProduct {
+                        product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
+                        version: version.to_owned(),
+                        package_name: identifier.to_owned(),
                     };
-                    installed.push(c);
+
+                    installed.push(installed_product);
                 }
             } else {
                 // Print the error message if the command failed
@@ -307,62 +326,24 @@ impl Client {
         }
 
         /* get Gravio Sensor Map */
-        {
-            // Uninstall-Package "Gravio HubKit  5.2.1.7032"
-            // let command = r#"
-            // foreach($obj in Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall") {
-            //     $dn = $obj.GetValue('DisplayName')
-            //     if($dn -ne $null -and $dn.Contains('Gravio Sensor Map')) {
-            //       $ver = $obj.GetValue('DisplayVersion')
-            //       Write-Host $dn@$ver
-            //     }
-            //   }"#;
-
-            // let output = Command::new("powershell")
-            //     .arg("-Command")
-            //     .arg(command)
-            //     .output()?;
-
-            // // Check if the command was successful
-            // if output.status.success() {
-            //     // Convert the output bytes to a string
-            //     let result = String::from_utf8_lossy(&output.stdout);
-            //     if result.len() > 0 {
-            //         let hubkit_splits: Vec<&str> = result.split("@").collect();
-            //         let name = "Sensor Map".to_owned();
-            //         let version = hubkit_splits[1].trim().to_owned();
-            //         let identifier = hubkit_splits[0].trim().to_owned();
-
-            //         let p = product::PRODUCT_
-
-            //         let c = Candidate {
-            //             remote_id: "".to_owned(),
-            //             name,
-            //             version,
-            //             identifier,
-            //             description: None,
-            //             installed: true,
-            //         };
-            //         installed.push(c);
-            //     }
-            // } else {
-            //     // Print the error message if the command failed
-            //     eprintln!("PowerShell command failed:\n{:?}", output.status);
-            //     return Err(Box::new(MyError::new("Failed to get installations: GSM")));
-            // }
-        }
+        {}
 
         Ok(installed)
     }
 
     /// Formats a list of Gravio Candidate items into a table and prints to stdout
-    pub fn format_candidate_table(&self, candidates: &Vec<Candidate>) {
+    pub fn format_candidate_table<'a>(&self, candidates: Vec<impl Into<TablePrinter>>) {
         log::debug!(
             "Formatting candidate list with {} candidates",
             candidates.len()
         );
 
-        let mut data: Vec<&Candidate<'_>> = candidates.iter().map(|x| x).collect();
+        // let lll = candidates[0];
+        // let abc: TablePrinter = lll.into();
+        let mut data = candidates
+            .into_iter()
+            .map(|x| x.into())
+            .collect::<Vec<TablePrinter>>();
 
         data.sort_by(|a, b| {
             let cmp_name = a.name.cmp(&b.name);
@@ -377,11 +358,11 @@ impl Client {
         let mut builder = tabled::builder::Builder::default();
         // builder.push_column(["Name", "Version", "Lmao"]);
         // builder.push_column("Version");
-        builder.push_record(["Name", "Version", "Identifier"]);
+        builder.push_record(["Name", "Version", "Identifier", "Flavor"]);
         for item in &data {
-            builder.push_record([&item.name, &item.version, &item.identifier]);
+            builder.push_record([&item.name, &item.version, &item.identifier, &item.flavor]);
         }
-        if candidates.is_empty() {
+        if data.is_empty() {
             builder.push_record(["No candidates available"]);
         }
 
@@ -391,7 +372,7 @@ impl Client {
             .with(Style::sharp())
             .with(Modify::new(Rows::first()).with(Alignment::center()));
 
-        if candidates.is_empty() {
+        if data.is_empty() {
             table
                 .modify((1, 0), tabled::settings::Span::column(3))
                 .modify((1, 0), Alignment::center());
@@ -403,60 +384,21 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use crate::{candidate::Candidate, get_build_id_by_candidate, product, Client, TeamCityRoot};
-    #[test]
-    fn parse_xml() {
-        let r = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-        <branches>
-            <branch name="master">
-                <builds count="1">
-                    <build id="20200" number="5.2.1-7037">
-                        <finishDate>20240219T065057+0000</finishDate>
-                        <artifacts count="1"/>
-                    </build>
-                </builds>
-            </branch>
-            <branch name="GoogleDrive">
-                <builds count="1">
-                    <build id="20204" number="5.2.1-7039">
-                        <finishDate>20240220T083702+0000</finishDate>
-                        <artifacts count="1"/>
-                    </build>
-                </builds>
-            </branch>
-            <branch name="box">
-                <builds count="1">
-                    <build id="20199" number="5.2.1-7036">
-                        <finishDate>20240216T134821+0000</finishDate>
-                        <artifacts count="1"/>
-                    </build>
-                </builds>
-            </branch>
-            <branch name="develop">
-                <builds count="1">
-                    <build id="20192" number="5.2.1-7032">
-                        <finishDate>20240215T022206+0000</finishDate>
-                        <artifacts count="1"/>
-                    </build>
-                </builds>
-            </branch>
-            <branch name="experimental_endpoint">
-                <builds count="1">
-                    <build id="20205" number="5.2.1-7040">
-                        <finishDate>20240220T084608+0000</finishDate>
-                        <artifacts count="1"/>
-                    </build>
-                </builds>
-            </branch>
-        </branches>
-        "#;
+    use serde::{Deserialize, Deserializer};
+    use serde_json::Value;
 
-        let result: Result<TeamCityRoot, _> = serde_xml_rs::from_str(r);
-        assert!(result.is_ok())
-    }
+    use crate::{
+        candidate::Candidate,
+        cli::Target,
+        download_artifact, get_build_id_by_candidate,
+        product::{self, Product},
+        Client, TeamCityArtifacts, TeamCityBranch, TeamCityBuild, TeamCityBuilds, TeamCityRoot,
+    };
 
     #[tokio::test]
     async fn candidates() {
+        simple_logger::SimpleLogger::new().env().init().unwrap();
+
         let c = Client::load().expect("Failed to load client");
         let candidates = c.list_candidates(None, None).await.unwrap();
         assert!(!candidates.is_empty());
@@ -465,25 +407,236 @@ mod tests {
 
     #[tokio::test]
     async fn get_build_id() {
+        simple_logger::SimpleLogger::new().env().init().unwrap();
+
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
         let candidate = Candidate {
             description: None,
             identifier: "".to_owned(),
             name: p.name.to_owned(),
             remote_id: None,
-            version: "5.2.0-7013".to_owned(),
+            version: "5.2.0-7015".to_owned(),
             installed: false,
-            product: p,
+            product: (*p).to_owned(),
         };
 
         let c = Client::load().expect("Failed to load client");
 
         let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
 
-        let id = get_build_id_by_candidate(&http_client, &candidate, &c.config.repositories)
-            .await
-            .expect("Expected an internal Id");
+        let vv = c.get_valid_repositories_for_platform();
 
-        print!("{}", id);
+        match get_build_id_by_candidate(&http_client, &candidate, &vv).await {
+            Ok(s) => match s {
+                None => {
+                    assert!(false, "Expected results, but got empty")
+                }
+                Some(ss) => {
+                    assert!(ss.remote_id.is_some(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
+                }
+            },
+            Err(_) => {
+                assert!(false, "Expected a valid candidate with a remote id from build server, got no results instead");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn get_build_id_by_identifier_name() {
+        simple_logger::SimpleLogger::new().env().init().unwrap();
+
+        let p = &product::PRODUCT_GRAVIO_HUBKIT;
+        let candidate = Candidate {
+            description: None,
+            identifier: "develop".to_owned(),
+            name: p.name.to_owned(),
+            remote_id: None,
+            version: "".to_owned(),
+            installed: false,
+            product: (*p).to_owned(),
+        };
+
+        let c = Client::load().expect("Failed to load client");
+
+        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
+
+        let vv = c.get_valid_repositories_for_platform();
+
+        match get_build_id_by_candidate(&http_client, &candidate, &vv).await {
+            Ok(s) => match s {
+                None => {
+                    assert!(false, "Expected results, but got empty")
+                }
+                Some(ss) => {
+                    assert!(ss.remote_id.is_some(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
+                }
+            },
+            Err(_) => {
+                assert!(false, "Expected a valid candidate with a remote id from build server, got no results instead");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn get_build_id_by_no_results() {
+        simple_logger::SimpleLogger::new().env().init().unwrap();
+
+        let p = &product::PRODUCT_GRAVIO_HUBKIT;
+        let candidate = Candidate {
+            description: None,
+            identifier: "1a361e15-27e2-48b1-bc8b-054d9ab8c435".to_owned(),
+            name: p.name.to_owned(),
+            remote_id: None,
+            version: "".to_owned(),
+            installed: false,
+            product: (*p).to_owned(),
+        };
+
+        let c = Client::load().expect("Failed to load client");
+
+        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
+
+        let vv = c.get_valid_repositories_for_platform();
+
+        match get_build_id_by_candidate(&http_client, &candidate, &vv).await {
+            Ok(s) => {
+                assert!(
+                    s.is_none(),
+                    "Expected there to be no results, but found some"
+                )
+            }
+            Err(_) => {
+                assert!(false, "Expected no results, but got an error instead");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn install_hubkit_non_existant() {
+        let c = Client::load().expect("Failed to load client");
+        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
+        let vv = c.get_valid_repositories_for_platform();
+
+        let target: Target = Target::Identifier("lmao".to_owned());
+
+        let candidate = Candidate {
+            remote_id: None,
+            name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
+            version: match &target {
+                Target::Identifier(_) => String::default(),
+                Target::Version(x) => x.to_owned(),
+            },
+            identifier: match &target {
+                Target::Identifier(x) => x.to_owned(),
+                Target::Version(_) => String::default(),
+            },
+            description: None,
+            installed: false,
+            product: product::PRODUCT_GRAVIO_HUBKIT.to_owned(),
+        };
+        c.install(&candidate).await.expect("Failed to install item");
+    }
+
+    #[test]
+    fn deserde_artifacts() {
+        let r = r#"{
+            "count": 1
+        }"#;
+
+        let val = serde_json::from_str::<TeamCityArtifacts>(r);
+        assert!(val.is_ok());
+    }
+
+    #[test]
+    fn deserde_build() {
+        let r = r#"{
+            "id": 20211,
+            "number": "5.2.1-7043",
+            "finishDate": "20240221T085516+0000",
+            "artifacts": {
+                "count": 1
+            }
+        }"#;
+
+        let val = serde_json::from_str::<TeamCityBuild>(r);
+        assert!(val.is_ok());
+    }
+
+    #[test]
+    fn deserde_builds() {
+        let r = r#"{
+            "count": 1,
+            "build": [
+                {
+                    "id": 20211,
+                    "number": "5.2.1-7043",
+                    "finishDate": "20240221T085516+0000",
+                    "artifacts": {
+                        "count": 1
+                    }
+                }
+            ]
+        }"#;
+
+        let val = serde_json::from_str::<TeamCityBuilds>(r);
+        assert!(val.is_ok());
+    }
+
+    #[test]
+    fn deserde_branch() {
+        let r = r#"{
+			"name": "master",
+			"builds": {
+				"count": 1,
+				"build": [
+					{
+						"id": 20211,
+						"number": "5.2.1-7043",
+						"finishDate": "20240221T085516+0000",
+						"artifacts": {
+							"count": 1
+						}
+					}
+				]
+			}
+		}"#;
+
+        let val = serde_json::from_str::<TeamCityBranch>(r);
+        println!("{:#?}", val);
+        assert!(val.is_ok());
+    }
+
+    #[tokio::test]
+    async fn download_develop_hubkit() {
+        simple_logger::SimpleLogger::new().env().init().unwrap();
+
+        let c = Client::load().expect("Failed to load client");
+        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
+        let vv = c.get_valid_repositories_for_platform();
+
+        let target: Target = Target::Identifier("develop".to_owned());
+
+        let p = &product::PRODUCT_GRAVIO_HUBKIT;
+
+        let c: Candidate = Candidate {
+            description: None,
+            remote_id: None,
+            identifier: "develop".to_owned(),
+            name: p.name.to_owned(),
+            version: String::default(),
+            installed: false,
+            product: (*p).to_owned(),
+        };
+
+        let with_build_id = get_build_id_by_candidate(&http_client, &c, &vv)
+            .await
+            .expect("expected to get build id during test for develop hubkit install")
+            .expect("Expected build id to exist");
+
+        let res = download_artifact(&with_build_id)
+            .await
+            .expect("Expected downlod not to fail");
+
+        assert!(false)
     }
 }

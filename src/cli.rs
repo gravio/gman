@@ -1,4 +1,10 @@
+use lazy_static::lazy_static;
+use regex::Regex;
+use std::str::FromStr;
+
 use clap::{Parser, Subcommand};
+
+use crate::gman_error::MyError;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -15,7 +21,87 @@ pub enum Commands {
     /// Uninstalls the candidate
     Uninstall { name: String, ver: Option<String> },
     /// Installs the [candidate] with optional [version]
-    Install { name: String, ver: Option<String> },
+    Install {
+        name: String,
+        ver: Option<String>,
+        flavor: Option<String>,
+    },
     /// Lists items that are installed on this machine
     Installed,
+}
+
+#[derive(Subcommand, Clone)]
+
+pub enum ConfigCommand {
+    New,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Target {
+    Version(String),
+    Identifier(String),
+}
+
+impl ToString for Target {
+    fn to_string(&self) -> String {
+        match self {
+            Target::Version(s) => s.to_owned(),
+            Target::Identifier(s) => s.to_owned(),
+        }
+    }
+}
+
+impl FromStr for Target {
+    type Err = MyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match VERSION_REGEX.find_iter(s).next() {
+            Some(c) => {
+                let matches_vesion = c.as_str().to_owned();
+                Ok(Target::Version(matches_vesion))
+            }
+            None => Ok(Target::Identifier(s.to_owned())),
+        }
+    }
+}
+
+lazy_static! {
+    static ref VERSION_REGEX: Regex =
+        Regex::new(r"^((\d{1,}+)[.-]?)+$").expect("Failed to create regex");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::Target;
+
+    #[test]
+    fn parse_target_identifier() {
+        let ver = Some("develop");
+        let target: Target = match ver {
+            Some(x) => Target::from_str(x.as_ref()).unwrap(),
+            None => Target::Identifier("master".to_owned()),
+        };
+
+        assert_eq!(target, Target::Identifier("develop".to_owned()))
+    }
+
+    #[test]
+    fn parse_target_version() {
+        let ver = Some("5.2.1-7322");
+        let target: Target = match ver {
+            Some(x) => Target::from_str(x.as_ref()).unwrap(),
+            None => Target::Identifier("master".to_owned()),
+        };
+
+        assert_eq!(target, Target::Version("5.2.1-7322".to_owned()))
+    }
+
+    #[test]
+    fn target_to_string() {
+        let target = Target::Identifier("master".to_owned());
+
+        assert_eq!(target.to_string(), "master")
+    }
 }
