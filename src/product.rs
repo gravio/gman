@@ -122,4 +122,12 @@ lazy_static! {
             // TODO(nf): Linux binaries are named for their version number (i.e., hubkit_5.2.1-8219_all.deb), this makes it hard to automatically extract their binary
         ],
     };
+
+    pub static ref ALL_PRODUCTS: Vec<&'static Product> = vec![
+        &PRODUCT_GRAVIO_HUBKIT,
+        &PRODUCT_GRAVIO_MONITOR,
+        &PRODUCT_GRAVIO_STUDIO,
+        &PRODUCT_GRAVIO_SENSOR_MAP,
+        &PRODUCT_UPDATE_MANAGER,
+    ];
 }

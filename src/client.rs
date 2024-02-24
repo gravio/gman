@@ -7,7 +7,9 @@ use tabled::grid::records::vec_records::CellInfo;
 
 use std::{fs::File, io::BufReader, path::Path, process::Command};
 
-use crate::candidate::{Candidate, InstallationCandidate, InstalledProduct, TablePrinter};
+use crate::candidate::{
+    Candidate, InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter,
+};
 use crate::gman_error::MyError;
 use crate::platform::Platform;
 use crate::{get_build_id_by_candidate, get_builds, product, CandidateRepository, ClientConfig};
@@ -149,27 +151,27 @@ impl Client {
 
     pub async fn install(
         &self,
-        candidate: &InstallationCandidate,
+        candidate: &SearchCandidate,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!(
             "Setting up installation prep for {} @ {}",
             &candidate.product_name,
-            &candidate.version_or_identifier_string()
+            &candidate.version_or_identifier_string(),
         );
 
         /* Locate the resource (check if in cache, if not, check online) */
-        let cache_path = &self.locate_in_cache(candidate);
+        let cache_path = self.locate_in_cache(candidate);
         if let Some(p) = cache_path {
             log::debug!(
                 "Found installation executable for {}@{} in path",
-                &candidate.name,
+                &candidate.product_name,
                 &candidate.version_or_identifier_string()
             );
         } else {
             /* Download the resource (to cache) */
             log::debug!(
                 "Installation executable for {}@{} not found in cache, attempting to download from repository",
-                &candidate.name,
+                &candidate.product_name,
                 &candidate.version_or_identifier_string()
             );
 
@@ -210,7 +212,7 @@ impl Client {
     }
 
     /// Attempts to locate the installer for the candiate in the locale cache
-    fn locate_in_cache(&self, candidate: &Candidate) -> Option<&Path> {
+    fn locate_in_cache(&self, candidate: &SearchCandidate) -> Option<&Path> {
         None
     }
     /// Lists items installed to this machine
@@ -252,7 +254,7 @@ impl Client {
 
                     let installed_product: InstalledProduct = InstalledProduct {
                         product_name: product::PRODUCT_GRAVIO_STUDIO.name.to_owned(),
-                        version: version,
+                        version,
                         package_name: package_full_name,
                     };
 
@@ -388,7 +390,7 @@ mod tests {
     use serde_json::Value;
 
     use crate::{
-        candidate::Candidate,
+        candidate::{Candidate, SearchCandidate},
         cli::Target,
         download_artifact, get_build_id_by_candidate,
         product::{self, Product},
@@ -410,15 +412,8 @@ mod tests {
         simple_logger::SimpleLogger::new().env().init().unwrap();
 
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
-        let candidate = Candidate {
-            description: None,
-            identifier: "".to_owned(),
-            name: p.name.to_owned(),
-            remote_id: None,
-            version: "5.2.0-7015".to_owned(),
-            installed: false,
-            product: (*p).to_owned(),
-        };
+        let candidate =
+            SearchCandidate::new(p.name, Some("5.2.0-7015"), None, Some("WindowsHubkit")).unwrap();
 
         let c = Client::load().expect("Failed to load client");
 
@@ -432,7 +427,7 @@ mod tests {
                     assert!(false, "Expected results, but got empty")
                 }
                 Some(ss) => {
-                    assert!(ss.remote_id.is_some(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
+                    assert!(!ss.remote_id.is_empty(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
                 }
             },
             Err(_) => {
@@ -446,15 +441,7 @@ mod tests {
         simple_logger::SimpleLogger::new().env().init().unwrap();
 
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
-        let candidate = Candidate {
-            description: None,
-            identifier: "develop".to_owned(),
-            name: p.name.to_owned(),
-            remote_id: None,
-            version: "".to_owned(),
-            installed: false,
-            product: (*p).to_owned(),
-        };
+        let candidate = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
 
         let c = Client::load().expect("Failed to load client");
 
@@ -468,7 +455,7 @@ mod tests {
                     assert!(false, "Expected results, but got empty")
                 }
                 Some(ss) => {
-                    assert!(ss.remote_id.is_some(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
+                    assert!(!ss.remote_id.is_empty(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
                 }
             },
             Err(_) => {
@@ -482,15 +469,13 @@ mod tests {
         simple_logger::SimpleLogger::new().env().init().unwrap();
 
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
-        let candidate = Candidate {
-            description: None,
-            identifier: "1a361e15-27e2-48b1-bc8b-054d9ab8c435".to_owned(),
-            name: p.name.to_owned(),
-            remote_id: None,
-            version: "".to_owned(),
-            installed: false,
-            product: (*p).to_owned(),
-        };
+        let candidate = SearchCandidate::new(
+            p.name,
+            None,
+            Some("1a361e15-27e2-48b1-bc8b-054d9ab8c435"),
+            None,
+        )
+        .unwrap();
 
         let c = Client::load().expect("Failed to load client");
 
@@ -519,21 +504,20 @@ mod tests {
 
         let target: Target = Target::Identifier("lmao".to_owned());
 
-        let candidate = Candidate {
-            remote_id: None,
-            name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
-            version: match &target {
-                Target::Identifier(_) => String::default(),
-                Target::Version(x) => x.to_owned(),
+        let candidate = SearchCandidate::new(
+            product::PRODUCT_GRAVIO_HUBKIT.name,
+            match &target {
+                Target::Identifier(x) => Some(x.as_str()),
+                Target::Version(x) => Some(x.as_str()),
             },
-            identifier: match &target {
-                Target::Identifier(x) => x.to_owned(),
-                Target::Version(_) => String::default(),
+            match &target {
+                Target::Identifier(x) => Some(x.as_str()),
+                Target::Version(x) => Some(x.as_str()),
             },
-            description: None,
-            installed: false,
-            product: product::PRODUCT_GRAVIO_HUBKIT.to_owned(),
-        };
+            None,
+        )
+        .unwrap();
+
         c.install(&candidate).await.expect("Failed to install item");
     }
 
@@ -618,15 +602,7 @@ mod tests {
 
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
 
-        let c: Candidate = Candidate {
-            description: None,
-            remote_id: None,
-            identifier: "develop".to_owned(),
-            name: p.name.to_owned(),
-            version: String::default(),
-            installed: false,
-            product: (*p).to_owned(),
-        };
+        let c = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
 
         let with_build_id = get_build_id_by_candidate(&http_client, &c, &vv)
             .await

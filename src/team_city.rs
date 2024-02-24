@@ -10,10 +10,10 @@ use serde_json::Value;
 use tokio::io::AsyncWriteExt as _;
 
 use crate::{
-    candidate::InstallationCandidate,
+    candidate::{InstallationCandidate, SearchCandidate},
     gman_error::MyError,
     platform::Platform,
-    product::{self, Product},
+    product::{self, Flavor, Product},
     Candidate, CandidateRepository,
 };
 
@@ -168,6 +168,7 @@ pub async fn get_builds<'a>(
                                         identifier: branch.name.to_owned(),
                                         product_name: product.name.to_owned(),
                                         flavor: flavor.to_owned(),
+                                        repo_location: repo_url.to_owned(),
                                     };
                                     candidates.push(ci);
                                 }
@@ -193,84 +194,97 @@ pub async fn get_builds<'a>(
 /// Queries TeamCity repositories for the actual internal id of the build given by the [Candidate]
 pub async fn get_build_id_by_candidate<'a>(
     http_client: &reqwest::Client,
-    candidate: &Candidate,
+    candidate: &SearchCandidate,
     valid_repositories: &[&CandidateRepository],
-) -> Result<Option<Candidate>, Box<dyn std::error::Error>> {
+) -> Result<Option<InstallationCandidate>, Box<dyn std::error::Error>> {
     if valid_repositories.is_empty() {
         return Err(Box::new(MyError::new(
             "No repositories supplied for searching",
         )));
     }
-    for repo in valid_repositories {
-        // if let Some(repo_url) = repo.repository_server.to_owned() {
-        //     let mut url = ensure_scheme(&repo_url)?;
-        //     url.set_path("app/rest/builds");
 
-        //     let filter_for = if candidate.version.is_empty() {
-        //         format!("branch:{}", &candidate.identifier)
-        //     } else {
-        //         format!("number:{}", &candidate.version)
-        //     };
-        //     url.query_pairs_mut().append_pair(
-        //         "locator",
-        //         &format!(
-        //             "buildType:{},count:1,{}",
-        //             &candidate.product.teamcity_id, &filter_for
-        //         ),
-        //     );
-        //     let request: reqwest::Request = match &repo.repository_credentials {
-        //         Some(credentials) => http_client
-        //             .get(url)
-        //             .header("Accept", "Application/json")
-        //             .bearer_auth(credentials)
-        //             .build()
-        //             .unwrap(),
-        //         None => http_client.get(url).build().unwrap(),
-        //     };
-        //     let res = http_client.execute(request).await?;
-        //     let res_status = res.status();
-        //     if res_status != 200 {
-        //         if res_status == 401 || res_status == 403 {
-        //             eprintln!("Not authorized to access repository {}", &repo.name)
-        //         } else if res_status == 404 {
-        //             eprintln!("Repository endpoint not found for repo {}", &repo.name);
-        //         }
-        //         log::warn!(
-        //             "Failed to get TeamCity repository information for repo {}",
-        //             &repo.name
-        //         );
-        //         continue;
-        //     }
-        //     let body = res.text().await?;
-        //     match serde_json::from_str::<TeamCityBuilds>(&body) {
-        //         Ok(team_city_root) => {
-        //             log::debug!("Got reponse from TeamCity build server");
-        //             if team_city_root.builds.is_empty() {
-        //                 return Ok(None);
-        //             }
-        //             for build in team_city_root.builds {
-        //                 let p: &product::PRODUCT_GRAVIO_STUDIO = &product::PRODUCT_GRAVIO_STUDIO;
-        //                 let c = Candidate {
-        //                     remote_id: Some(build.id.to_string()),
-        //                     description: Some(format!("{} (TeamCity)", &candidate.product.name)),
-        //                     installed: false,
-        //                     name: p.name.to_owned(),
-        //                     version: build.build_number.to_owned(),
-        //                     identifier: build.branch_name.unwrap_or(build.build_number.to_owned()),
-        //                     product: p,
-        //                 };
-        //                 return Ok(Some(c));
-        //             }
-        //         }
-        //         Err(e) => {
-        //             log::error!(
-        //                 "Failed to parse TeamCity repository information for repo {}",
-        //                 &repo_url
-        //             );
-        //             return Err(Box::new(e));
-        //         }
-        //     }
-        // }
+    let mut found_build_id: Option<String> = None;
+    let mut found_on_repo: Option<&CandidateRepository> = None;
+
+    for repo in valid_repositories {
+        if let Some(repo_url) = &repo.repository_server {
+            log::debug!(
+                "Repo defined a remote url, will fetch from remote '{}'",
+                &repo_url
+            );
+
+            let mut url = ensure_scheme(&repo_url)?;
+            url.set_path("app/rest/builds");
+            let filter_for = if candidate.version.is_some() {
+                format!("number:{}", &candidate.version.as_ref().unwrap())
+            } else {
+                format!("branch:{}", &candidate.identifier.as_ref().unwrap())
+            };
+            url.query_pairs_mut().append_pair(
+                "locator",
+                &format!(
+                    "buildType:{},count:1,{}",
+                    &candidate.flavor.teamcity_id, &filter_for
+                ),
+            );
+
+            let request: reqwest::Request = match &repo.repository_credentials {
+                Some(credentials) => http_client
+                    .get(url)
+                    .header("Accept", "Application/json")
+                    .bearer_auth(credentials)
+                    .build()
+                    .unwrap(),
+                None => http_client.get(url).build().unwrap(),
+            };
+
+            let res = http_client.execute(request).await?;
+            let res_status = res.status();
+            if res_status != 200 {
+                if res_status == 401 || res_status == 403 {
+                    eprintln!("Not authorized to access repository {}", &repo.name)
+                } else if res_status == 404 {
+                    eprintln!("Repository endpoint not found for repo {}", &repo.name);
+                }
+                log::warn!(
+                    "Failed to get TeamCity repository information for repo {}",
+                    &repo.name
+                );
+                continue;
+            }
+
+            let body = res.text().await?;
+
+            match serde_json::from_str::<TeamCityBuilds>(&body) {
+                Ok(team_city_root) => {
+                    log::debug!("Got reponse from TeamCity build server");
+                    if team_city_root.builds.is_empty() {
+                        continue;
+                    }
+                    for build in team_city_root.builds {
+                        let c = InstallationCandidate {
+                            remote_id: build.id.to_string(),
+                            product_name: candidate.product_name.to_owned(),
+                            version: build.build_number.to_owned(),
+                            identifier: build.branch_name.unwrap_or(build.build_number.to_owned()),
+                            flavor: candidate.flavor.to_owned(),
+                            repo_location: repo_url.to_owned(),
+                        };
+                        return Ok(Some(c));
+                    }
+                }
+                Err(e) => {
+                    log::error!(
+                        "Failed to parse TeamCity repository information for repo {} ({})",
+                        &repo_url,
+                        e,
+                    );
+                    continue;
+                }
+            }
+        } else if let Some(repo_path) = &repo.repository_folder {
+            log::debug!("Repo defined a local path, will fetch from file system");
+        }
     }
 
     Err(Box::new(MyError::new(
@@ -279,11 +293,11 @@ pub async fn get_build_id_by_candidate<'a>(
 }
 
 pub async fn download_artifact<'a>(
-    candidate: &'a Candidate,
+    candidate: &'a InstallationCandidate,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log::debug!(
         "Contacting TeamCity for download link on candidate {}",
-        &candidate.remote_id.as_ref().unwrap()
+        &candidate.remote_id
     );
 
     // // hyper::

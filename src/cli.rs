@@ -24,7 +24,7 @@ pub enum Commands {
     Install {
         name: String,
         ver: Option<String>,
-        flavor: Option<String>,
+        flavor_str: Option<String>,
     },
     /// Lists items that are installed on this machine
     Installed,

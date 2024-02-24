@@ -18,13 +18,13 @@ use std::process::exit;
 use std::str::FromStr;
 use team_city::*;
 
+use crate::candidate::SearchCandidate;
 use crate::cli::{Cli, Target};
 use crate::client::Client;
 use crate::platform::Platform;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // This is where we will setup our HTTP client requests.
     simple_logger::SimpleLogger::new().env().init().unwrap();
 
     let cli = Cli::parse();
@@ -39,6 +39,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .expect("Failed to load candidates");
             let installed_candidates = c.get_installed();
             for installed in installed_candidates {
+                /* Keep Candidate in list if...
+                 *   - not installed at all, or
+                 *   - version is higher than installed
+                 */
                 candidates.retain_mut(|cd| !cd.product_equals(&installed))
             }
             c.format_candidate_table(candidates);
@@ -53,7 +57,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             exit(0)
         }
         /* Install */
-        Some(Commands::Install { name, ver, flavor }) => {
+        Some(Commands::Install {
+            name,
+            ver,
+            flavor_str,
+        }) => {
             let c = Client::load().expect("Couldnt load client");
 
             /* find product */
@@ -68,24 +76,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 Some(x) => Target::from_str(x.as_ref()).unwrap(),
                 None => Target::Identifier("master".to_owned()),
             };
+
             println!("Installing {:#?}@{}", name, target.to_string());
 
-            let candidate = Candidate {
-                remote_id: None,
-                name: name.to_owned(),
-                version: match &target {
-                    Target::Identifier(_) => String::default(),
-                    Target::Version(x) => x.to_owned(),
+            let candidate = SearchCandidate::new(
+                name,
+                match &target {
+                    Target::Identifier(_) => None,
+                    Target::Version(x) => Some(x.as_str()),
                 },
-                identifier: match &target {
-                    Target::Identifier(x) => x.to_owned(),
-                    Target::Version(_) => String::default(),
+                match &target {
+                    Target::Identifier(x) => Some(x.as_str()),
+                    Target::Version(_) => None,
                 },
-                description: None,
-                installed: false,
-                product: product_opt.unwrap().to_owned(),
-            };
-            c.install(&candidate).await.expect("Failed to install item");
+                flavor_str.as_ref().map(|x| x.as_str()),
+            );
+
+            match candidate {
+                Some(candidate) => {
+                    c.install(&candidate).await.expect("Failed to install item");
+                }
+                None => {
+                    eprintln!("Could not construct a Search Candidate from the input parameters. Check that the product/flavor exist");
+                    exit(1)
+                }
+            }
 
             exit(0)
         }
