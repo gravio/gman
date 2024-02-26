@@ -60,6 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             name,
             ver,
             flavor_str,
+            automatic_upgrade,
         }) => {
             let c = Client::load().expect("Couldnt load client");
 
@@ -93,7 +94,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             match candidate {
                 Some(candidate) => {
-                    c.install(&candidate).await.expect("Failed to install item");
+                    c.install(&candidate, automatic_upgrade.to_owned())
+                        .await
+                        .expect("Failed to install item");
                 }
                 None => {
                     eprintln!("Could not construct a Search Candidate from the input parameters. Check that the product/flavor exist");

@@ -25,6 +25,8 @@ pub enum Commands {
         name: String,
         ver: Option<String>,
         flavor_str: Option<String>,
+        #[clap(short, long, help = "A boolean flag")]
+        automatic_upgrade: Option<bool>,
     },
     /// Lists items that are installed on this machine
     Installed,

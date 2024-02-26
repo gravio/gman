@@ -195,6 +195,56 @@ impl InstallationCandidate {
     }
 }
 
+impl FromStr for InstallationCandidate {
+    type Err = MyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let splits = s.split('@').collect::<Vec<_>>();
+        if splits.len() != 6 {
+            return Err(MyError::new("Not an InstallationCandidate string"));
+        }
+        let product_name = splits[0];
+        let platform = splits[1];
+        let flavor_str = splits[2];
+        let identifier = splits[3];
+        let version = splits[4];
+
+        let platform = Platform::from_str(platform).map_err(|x| {
+            MyError::new("Failed to deserialize platform key in Installation Candiate FromStr")
+        })?;
+
+        let product = Product::from_name_and_platform(product_name, Some(platform));
+        if let None = product {
+            return Err(MyError::new(
+                "Failed to extract product from InstallationCandidate FromStr",
+            ));
+        }
+        let product = product.unwrap();
+
+        let flavor = product
+            .flavors
+            .iter()
+            .find(|x| x.name.to_lowercase() == flavor_str.to_lowercase());
+
+        if let None = flavor {
+            return Err(MyError::new(
+                "Failed to extract flavor from InstallationCandidate FromStr",
+            ));
+        }
+
+        let c = Self {
+            remote_id: String::default(),
+            repo_location: String::default(),
+            product_name: product_name.to_owned(),
+            version: version.to_owned(),
+            identifier: identifier.to_owned(),
+            flavor: flavor.unwrap().to_owned(),
+        };
+
+        Ok(c)
+    }
+}
+
 #[derive(Debug)]
 pub struct InstalledProduct {
     pub product_name: String,

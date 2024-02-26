@@ -1,6 +1,8 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use serde::Deserialize;
+
+use crate::gman_error::MyError;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub(crate) enum Platform {
@@ -10,6 +12,22 @@ pub(crate) enum Platform {
     Mac,
     RaspberryPi,
     Linux,
+}
+
+impl FromStr for Platform {
+    type Err = MyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Android" => Ok(Self::Android),
+            "iOS" => Ok(Self::IOS),
+            "Windows" => Ok(Self::Windows),
+            "macOS" => Ok(Self::Mac),
+            "rpi" => Ok(Self::RaspberryPi),
+            "Linux" => Ok(Self::Linux),
+            _ => Err(MyError::new("Not a valid Platform string")),
+        }
+    }
 }
 
 impl Display for Platform {

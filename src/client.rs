@@ -1,4 +1,6 @@
+use std::ops::Deref;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::Duration;
 use std::{cmp::min, fmt::Write};
 use std::{fs, thread};
@@ -159,6 +161,7 @@ impl Client {
     pub async fn install(
         &self,
         candidate: &SearchCandidate,
+        automatic_upgrade: Option<bool>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!(
             "Setting up installation prep for {} @ {}",
@@ -167,13 +170,24 @@ impl Client {
         );
 
         /* Locate the resource (check if in cache, if not, check online) */
-        let cache_path = self.locate_in_cache(candidate);
-        let xyz = if let Some(p) = cache_path {
+        let cached_candidate = self.locate_in_cache(candidate);
+        let actual_candidate = if let Some(p) = cached_candidate {
             log::debug!(
                 "Found installation executable for {}@{} in path",
                 &candidate.product_name,
                 &candidate.version_or_identifier_string()
             );
+
+            if let None = candidate.version {
+                if automatic_upgrade.is_none() {
+                    /* version unspecified, prompt user to optionally fetch latest from build server */
+                    println!("A candidate for installation has been found in your local cache, but since the version was unspecified it may be oudated. Would you like to check the remote repositories for updated versions? (y/n)");
+                    println!("{:#?}", &p);
+                    let mut buffer = String::new();
+                    std::io::stdin().read_line(&mut buffer)?;
+                    if Self::is_console_confirm(&buffer) {}
+                }
+            }
             p
         } else {
             /* Download the resource (to cache) */
@@ -201,7 +215,7 @@ impl Client {
                     )
                     .await?;
 
-                    downloaded_path
+                    found.0
                 }
                 None => {
                     println!("No candidates found");
@@ -216,76 +230,70 @@ impl Client {
     }
 
     /// Attempts to locate the installer for the candiate in the local cache
-    fn locate_in_cache(&self, candidate: &SearchCandidate) -> Option<PathBuf> {
-        let current_platform =
-            Platform::platform_for_current_platform().expect("Current platform is not supported");
+    fn locate_in_cache(&self, search: &SearchCandidate) -> Option<InstallationCandidate> {
+        let mut found_candidates: Vec<InstallationCandidate> = Vec::new();
+
         match fs::read_dir(&self.config.cache_directory) {
             Ok(list_dir) => {
                 for entry_result in list_dir {
                     if let Ok(entry) = entry_result {
                         if let Ok(fname) = entry.file_name().into_string() {
-                            let splits = fname.split('@').collect::<Vec<_>>();
-                            let mut match_vals: Vec<bool> = Vec::new();
-                            for (i, x) in splits.iter().enumerate() {
-                                let xlower = x.to_lowercase();
-                                if i == 0 {
-                                    /* Check product */
-                                    if xlower != candidate.product_name.to_lowercase() {
-                                        /* not a product match */
-                                        match_vals.push(false);
-                                        break;
-                                    }
-                                    match_vals.push(true);
-                                } else if i == 1 {
-                                    /* check Platform */
-                                    if xlower != current_platform.to_string().to_lowercase() {
-                                        /* not a platform match */
-                                        match_vals.push(false);
-                                        break;
-                                    }
-                                    match_vals.push(true);
-                                } else if i == 2 {
-                                    /* check flavor */
-                                    if xlower != candidate.flavor.name.to_lowercase() {
-                                        /* not a flavor match */
-                                        match_vals.push(false);
-                                        break;
-                                    }
-                                    match_vals.push(true);
-                                } else if i == 3 {
-                                    /* check identifier */
-                                    if let Some(ident) = &candidate.identifier {
-                                        if xlower != ident.to_lowercase() {
-                                            /* not an identifier match */
-                                            match_vals.push(false);
-                                            break;
-                                        }
-                                        match_vals.push(true);
-                                    }
-                                } else if i == 4 {
-                                    if let Some(version) = &candidate.version {
-                                        if xlower != version.to_lowercase() {
-                                            /* not a version match */
-                                            match_vals.push(false);
-                                            break;
-                                        }
-                                        match_vals.push(true);
-                                    }
-                                }
-                            }
-
-                            if !match_vals.is_empty() && match_vals.iter().all(|x| *x) {
-                                log::info!("Found a matching local binary: {}", fname);
-                                return Some(entry.path());
+                            if let Ok(ci) = InstallationCandidate::from_str(fname.as_str()) {
+                                found_candidates.push(ci);
                             }
                         }
                     }
                 }
             }
             Err(e) => {
-                log::error!("Failed to read cache directory: {}", e)
+                log::error!("Failed to read cache directory: {}", e);
+                return None;
+            }
+        };
+
+        /* Sort the candidates, in preference of Flavor, Version, Identifier */
+        found_candidates.sort_by(|a, b| {
+            let cmp_flavor = a.flavor.name.cmp(&b.flavor.name);
+
+            if cmp_flavor == std::cmp::Ordering::Equal {
+                let cmp_version = a.version.cmp(&b.version);
+                if cmp_version == std::cmp::Ordering::Equal {
+                    a.identifier.cmp(&b.identifier)
+                } else {
+                    cmp_version
+                }
+            } else {
+                cmp_flavor
+            }
+        });
+
+        /* Drop non platform, non product items */
+        found_candidates.retain(|x| {
+            (x.flavor.platform == search.flavor.platform)
+                && (x.product_name.to_lowercase() == search.product_name.to_lowercase())
+        });
+
+        for found in found_candidates.into_iter() {
+            /* if version is specified, that overrides everything, grab first matching one */
+            if let Some(v) = &search.version {
+                if v.to_lowercase() == found.version.to_lowercase() {
+                    log::info!("Found exact version match in cache");
+                    return Some(found);
+                }
+            }
+            if let Some(i) = &search.identifier {
+                if i.to_lowercase() == found.identifier.to_lowercase() {
+                    log::info!("Found matching identifier in cache");
+                    return Some(found);
+                }
+            }
+
+            if search.version.is_none() && search.identifier.is_none() {
+                log::info!("Found matching inexact unspecified version/identifier in cache");
+                return Some(found);
             }
         }
+
         None
     }
     /// Lists items installed to this machine
@@ -404,6 +412,12 @@ impl Client {
         {}
 
         Ok(installed)
+    }
+
+    /// Whether the given string is any kind of confirmation (yes, y, etc)
+    fn is_console_confirm(val: &str) -> bool {
+        let affirmative: Vec<&str> = vec!["y", "yes"];
+        affirmative.iter().any(|v| *v == val.trim().to_lowercase())
     }
 
     /// Formats a list of Gravio Candidate items into a table and prints to stdout
@@ -598,7 +612,9 @@ mod tests {
         )
         .unwrap();
 
-        c.install(&candidate).await.expect("Failed to install item");
+        c.install(&candidate, Some(false))
+            .await
+            .expect("Failed to install item");
     }
 
     #[tokio::test]
@@ -623,7 +639,9 @@ mod tests {
         )
         .unwrap();
 
-        c.install(&candidate).await.expect("Failed to install item");
+        c.install(&candidate, Some(false))
+            .await
+            .expect("Failed to install item");
     }
 
     #[test]
