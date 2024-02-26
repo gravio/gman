@@ -208,9 +208,8 @@ impl InstallationCandidate {
             #[cfg(target_os = "windows")]
             {
                 log::debug!("Creating a temporary file for this gs/win extraction");
-                let tmp_folder = env::temp_dir()
-                    .join(app::APP_FOLDER_NAME)
-                    .join(self.make_cached_file_name());
+
+                let tmp_folder = app::get_app_temp_directory().join(self.make_cached_file_name());
                 std::fs::create_dir_all(&tmp_folder)?;
 
                 let unzip_command = format!(

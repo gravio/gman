@@ -87,7 +87,7 @@ where
 }
 
 fn default_download() -> PathBuf {
-    env::temp_dir().join(app::APP_FOLDER_NAME)
+    app::get_app_temp_directory()
 }
 
 fn deserialize_path_buf_cache<'de, D>(deserializer: D) -> Result<PathBuf, D::Error>

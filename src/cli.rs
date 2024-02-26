@@ -17,7 +17,14 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Lists installation candidates
-    List,
+    List {
+        #[clap(
+            short,
+            long,
+            help = "if true, shows results that may already be installed on your computer"
+        )]
+        show_installed: bool,
+    },
     /// Uninstalls the candidate
     Uninstall { name: String, ver: Option<String> },
     /// Installs the [candidate] with optional [version]

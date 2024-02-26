@@ -22,6 +22,10 @@ impl Client {
         app::init_logging();
         app::enable_logging(client_config.log_level);
         let c = Client::new(client_config);
+
+        /* clear the temp directories */
+        c.clear_temp();
+
         Ok(c)
     }
     pub fn new(config: ClientConfig) -> Self {
@@ -39,6 +43,14 @@ impl Client {
         let config: ClientConfig = serde_json::from_reader(reader)?;
         config.ensure_directories();
         Ok(config)
+    }
+
+    /// Deletes the temporary folder
+    fn clear_temp(&self) {
+        log::debug!("Clearing temporary folders");
+        let app_temp_folder = std::env::temp_dir().join(app::APP_FOLDER_NAME);
+        let _ = std::fs::remove_dir_all(app_temp_folder);
+        let _ = std::fs::remove_dir_all(&self.config.temp_download_directory);
     }
 
     fn get_valid_repositories_for_platform(&self) -> Vec<&CandidateRepository> {

@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     match &cli.command {
         /* List */
-        Some(Commands::List) => {
+        Some(Commands::List { show_installed }) => {
             let c = Client::load().expect("Couldnt load client");
             let mut candidates = c
                 .list_candidates(None, None)
@@ -36,7 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                  *   - not installed at all, or
                  *   - version is higher than installed
                  */
-                candidates.retain_mut(|cd| !cd.product_equals(&installed))
+                if (!show_installed) {
+                    candidates.retain_mut(|cd| !cd.product_equals(&installed))
+                }
             }
             c.format_candidate_table(candidates);
             exit(0)
