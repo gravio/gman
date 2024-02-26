@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use lazy_static::lazy_static;
 
 use crate::platform::Platform;
@@ -19,10 +17,7 @@ pub struct Flavor {
 }
 
 impl Product {
-    pub fn from_name_and_platform<'a>(
-        product_name: &'_ str,
-        platform: Option<Platform>,
-    ) -> Option<&'a Self> {
+    pub fn from_name<'a>(product_name: &'_ str) -> Option<&'a Self> {
         match product_name.to_lowercase().trim() {
             "graviostudio" => Some(&PRODUCT_GRAVIO_STUDIO),
             "sensormap" => Some(&PRODUCT_GRAVIO_SENSOR_MAP),

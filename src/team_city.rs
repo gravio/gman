@@ -1,36 +1,26 @@
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
-use log::Log;
 use std::{
-    fs::File,
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use std::thread;
-use std::time::Duration;
-use std::{cmp::min, fmt::Write};
-
-use bytes::Bytes;
-use hyper;
-use hyper::body;
+use std::fmt::Write;
 
 use reqwest::{
     header::{HeaderValue, RANGE},
     Url,
 };
-
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
-use tokio::{fs, io::AsyncWriteExt as _, sync::futures};
 
 use crate::{
     app,
     candidate::{InstallationCandidate, SearchCandidate},
-    gman_error::MyError,
+    gman_error::GravioError,
     platform::Platform,
-    product::{self, Flavor, Product},
-    Candidate, CandidateRepository,
+    product::Product,
+    CandidateRepository,
 };
 
 #[derive(Debug, Deserialize)]
@@ -201,6 +191,7 @@ pub async fn get_builds<'a>(
             }
         } else if let Some(repo_path) = &repo.repository_folder {
             log::debug!("Repo defined a local path, will fetch from file system");
+            todo!()
         }
     }
 
@@ -214,13 +205,10 @@ pub async fn get_build_id_by_candidate<'a>(
     valid_repositories: &[&'a CandidateRepository],
 ) -> Result<Option<(InstallationCandidate, &'a CandidateRepository)>, Box<dyn std::error::Error>> {
     if valid_repositories.is_empty() {
-        return Err(Box::new(MyError::new(
+        return Err(Box::new(GravioError::new(
             "No repositories supplied for searching",
         )));
     }
-
-    let mut found_build_id: Option<String> = None;
-    let mut found_on_repo: Option<&CandidateRepository> = None;
 
     for repo in valid_repositories {
         if let Some(repo_url) = &repo.repository_server {
@@ -300,10 +288,11 @@ pub async fn get_build_id_by_candidate<'a>(
             }
         } else if let Some(repo_path) = &repo.repository_folder {
             log::debug!("Repo defined a local path, will fetch from file system");
+            todo!()
         }
     }
 
-    Err(Box::new(MyError::new(
+    Err(Box::new(GravioError::new(
         "Unknown error occurred while getting build id: nothing was returned",
     )))
 }
@@ -353,13 +342,13 @@ pub async fn download_artifact<'a>(
             );
             if res_status == 401 || res_status == 403 {
                 eprintln!("Not authorized to access repository {}", &repo.name);
-                return Err(Box::new(MyError::new("Not authorized")));
+                return Err(Box::new(GravioError::new("Not authorized")));
             }
             if res_status == 404 {
                 eprintln!("File not found on repo {}", &repo.name);
-                return Err(Box::new(MyError::new("File not found")));
+                return Err(Box::new(GravioError::new("File not found")));
             }
-            return Err(Box::new(MyError::new(
+            return Err(Box::new(GravioError::new(
                 "Unknown error occurred during download request",
             )));
         }
@@ -392,13 +381,13 @@ pub async fn download_artifact<'a>(
             );
             if res_status == 401 || res_status == 403 {
                 eprintln!("Not authorized to access repository {}", &repo.name);
-                return Err(Box::new(MyError::new("Not authorized")));
+                return Err(Box::new(GravioError::new("Not authorized")));
             }
             if res_status == 404 {
                 eprintln!("File not found on repo {}", &repo.name);
-                return Err(Box::new(MyError::new("File not found")));
+                return Err(Box::new(GravioError::new("File not found")));
             }
-            return Err(Box::new(MyError::new(
+            return Err(Box::new(GravioError::new(
                 "Unknown error occurred during download request",
             )));
         }
@@ -427,7 +416,9 @@ pub async fn download_artifact<'a>(
 
             let status = response.status();
             if !(status == 200 || status == 206) {
-                return Err(Box::new(MyError::new("Unexpected error during download")));
+                return Err(Box::new(GravioError::new(
+                    "Unexpected error during download",
+                )));
             }
 
             let mut byte_stream = response.bytes_stream();
@@ -447,7 +438,7 @@ pub async fn download_artifact<'a>(
 
         Ok(output_file_cache_path)
     } else {
-        Err(Box::new(MyError::new(
+        Err(Box::new(GravioError::new(
             "Repository did not have a Server specified",
         )))
     }

@@ -10,11 +10,6 @@ mod team_city;
 use clap::Parser;
 use cli::Commands;
 use client_config::*;
-use simple_logger::SimpleLogger;
-
-use indicatif::{ProgressBar, ProgressState, ProgressStyle};
-
-use candidate::{Candidate, InstallationCandidate};
 use std::process::exit;
 use std::str::FromStr;
 use team_city::*;
@@ -22,7 +17,6 @@ use team_city::*;
 use crate::candidate::SearchCandidate;
 use crate::cli::{Cli, Target};
 use crate::client::Client;
-use crate::platform::Platform;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -50,29 +44,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         /* Uninstall */
         Some(Commands::Uninstall { name, ver }) => {
             let c = Client::load().expect("Couldnt load client");
-            print!("uninstalling an item: {:?}", name);
-
-            let _ = c.uninstall(&name, ver);
+            let _ = c.uninstall(&name, ver.to_owned());
             exit(0)
         }
         /* Install */
         Some(Commands::Install {
             name,
-            ver,
+            build_or_branch,
             flavor_str,
             automatic_upgrade,
         }) => {
             let c = Client::load().expect("Couldnt load client");
 
             /* find product */
-            let platform: Option<Platform> = Platform::platform_for_current_platform();
-            let product_opt = &product::Product::from_name_and_platform(name, platform);
-            if let None = product_opt {
-                eprintln!("Failed to install. No product known: {}", name);
-                exit(1)
-            }
-
-            let target: Target = match ver {
+            let target: Target = match build_or_branch {
                 Some(x) => Target::from_str(x.as_ref()).unwrap(),
                 None => Target::Identifier("master".to_owned()),
             };
@@ -97,14 +82,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     c.install(&candidate, automatic_upgrade.to_owned())
                         .await
                         .expect("Failed to install item");
+                    println!("Successfully Installed {}", candidate.product_name);
+                    exit(0);
                 }
                 None => {
                     eprintln!("Could not construct a Search Candidate from the input parameters. Check that the product/flavor exist");
                     exit(1)
                 }
             }
-
-            exit(0)
         }
         Some(Commands::Installed) => {
             let c = Client::load().expect("Couldnt load client");

@@ -1,13 +1,13 @@
 use std::{
     path::{Path, PathBuf},
     process::Command,
-    str::{FromStr, Split},
+    str::FromStr,
 };
 
-use tabled::{Table, Tabled};
+use tabled::Tabled;
 
 use crate::{
-    gman_error::MyError,
+    gman_error::GravioError,
     platform::Platform,
     product::{self, Flavor, Product},
 };
@@ -153,14 +153,6 @@ impl InstallationCandidate {
         &installed_product.product_name == &self.product_name
     }
 
-    pub fn version_or_identifier_string(&self) -> &str {
-        if (&self.version).is_empty() {
-            &self.identifier
-        } else {
-            &self.version
-        }
-    }
-
     /// Returns the file name of the file this InstallationCandidate represents
     pub fn get_binary_file_name(&self) -> String {
         PathBuf::from_str(&self.flavor.teamcity_executable_path)
@@ -193,29 +185,72 @@ impl InstallationCandidate {
         let fname = &self.make_cached_file_name();
         dir.join(fname)
     }
+
+    pub fn install(&self, binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        /* Try Gravio Studio (win) */
+        if &self.product_name == &product::PRODUCT_GRAVIO_STUDIO.name.to_lowercase() {
+            #[cfg(target_os = "windows")]
+            {
+                // let command = format!("Install-AppxPackage {}", self.package_name);
+                // let output = Command::new("powershell")
+                //     .arg("-Command")
+                //     .arg(command)
+                //     .output()?;
+
+                // // Check if the command was successful
+                // if output.status.success() {
+                //     // Convert the output bytes to a string
+                //     log::debug!("Successfully uninstalled gs/win");
+                //     return Ok(());
+                // }
+                // eprintln!("PowerShell command failed:\n{:?}", output.status);
+                // return Err(Box::new(MyError::new(
+                //     "Failed to get installations: Studio",
+                // )));
+            }
+        }
+        /* Try HubKit */
+        if &self.product_name == &product::PRODUCT_GRAVIO_HUBKIT.name.to_lowercase() {
+            #[cfg(target_os = "windows")]
+            {
+                let output = Command::new("msiexec")
+                    .args(["/i", binary_path.to_str().unwrap()])
+                    .output()?;
+
+                // Check if the command was successful
+                if output.status.success() {
+                    // Convert the output bytes to a string
+                    log::debug!("Successfully installed HubKit");
+                    return Ok(());
+                }
+                if output.status.code().unwrap_or_default() == 1602 {
+                    return Err(Box::new(GravioError::new("User canceled installation")));
+                }
+                return Err(Box::new(GravioError::new(
+                    "Unknown error occurred during installation",
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl FromStr for InstallationCandidate {
-    type Err = MyError;
+    type Err = GravioError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let splits = s.split('@').collect::<Vec<_>>();
         if splits.len() != 6 {
-            return Err(MyError::new("Not an InstallationCandidate string"));
+            return Err(GravioError::new("Not an InstallationCandidate string"));
         }
         let product_name = splits[0];
-        let platform = splits[1];
         let flavor_str = splits[2];
         let identifier = splits[3];
         let version = splits[4];
 
-        let platform = Platform::from_str(platform).map_err(|x| {
-            MyError::new("Failed to deserialize platform key in Installation Candiate FromStr")
-        })?;
-
-        let product = Product::from_name_and_platform(product_name, Some(platform));
+        let product = Product::from_name(product_name);
         if let None = product {
-            return Err(MyError::new(
+            return Err(GravioError::new(
                 "Failed to extract product from InstallationCandidate FromStr",
             ));
         }
@@ -227,7 +262,7 @@ impl FromStr for InstallationCandidate {
             .find(|x| x.name.to_lowercase() == flavor_str.to_lowercase());
 
         if let None = flavor {
-            return Err(MyError::new(
+            return Err(GravioError::new(
                 "Failed to extract flavor from InstallationCandidate FromStr",
             ));
         }
@@ -255,9 +290,6 @@ pub struct InstalledProduct {
 }
 
 impl InstalledProduct {
-    pub fn candidate_equals(&self, candidate: &InstallationCandidate) -> bool {
-        self.product_name == candidate.product_name
-    }
     pub fn uninstall(&self) -> Result<(), Box<dyn std::error::Error>> {
         /* Try Gravio Studio (win) */
         if &self.product_name == &product::PRODUCT_GRAVIO_STUDIO.name {
@@ -276,7 +308,7 @@ impl InstalledProduct {
                     return Ok(());
                 }
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(MyError::new(
+                return Err(Box::new(GravioError::new(
                     "Failed to get installations: Studio",
                 )));
             }
@@ -285,10 +317,8 @@ impl InstalledProduct {
         if &self.product_name == &product::PRODUCT_GRAVIO_HUBKIT.name {
             #[cfg(target_os = "windows")]
             {
-                let command = format!("msiexec /x \"{}\"", self.package_name);
-                let output = Command::new("powershell")
-                    .arg("-Command")
-                    .arg(command)
+                let output = Command::new("msiexec")
+                    .args(["/x", self.package_name.as_str()])
                     .output()?;
 
                 // Check if the command was successful
@@ -298,98 +328,7 @@ impl InstalledProduct {
                     return Ok(());
                 }
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(MyError::new(
-                    "Failed to get installations: Studio",
-                )));
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Tabled)]
-pub struct Candidate {
-    /// internal id, often just a TeamCity reference
-    #[tabled(skip)]
-    pub remote_id: Option<String>,
-
-    /// Display name of the Candidate, usually a Product
-    #[tabled(order = 0)]
-    pub name: String,
-
-    #[tabled(skip)]
-    pub product: Product,
-
-    /// Description of what this Candidate is
-    #[tabled(skip)]
-    pub description: Option<String>,
-
-    /// Version, such as 5.2.1-7033
-    #[tabled(order = 1)]
-    pub version: String,
-
-    /// User friendly identifier, usually a Branch name, so a user may install by "master" or "qos_bugfix"
-    #[tabled(order = 2)]
-    pub identifier: String,
-
-    /// Whetehr this candidate is installed to the user's machine
-    #[tabled(skip)]
-    pub installed: bool,
-}
-
-impl PartialEq for Candidate {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.version == other.version
-    }
-}
-
-impl Candidate {
-    pub fn version_or_identifier_string(&self) -> &str {
-        if (&self.version).is_empty() {
-            &self.identifier
-        } else {
-            &self.version
-        }
-    }
-    pub fn uninstall(&self) -> Result<(), Box<dyn std::error::Error>> {
-        /* Try Gravio Studio (win) */
-        #[cfg(target_os = "windows")]
-        if &self.product.name == &product::PRODUCT_GRAVIO_STUDIO.name {
-            let command = format!("Remove-AppxPackage {}", self.identifier);
-            let output = Command::new("powershell")
-                .arg("-Command")
-                .arg(command)
-                .output()?;
-
-            // Check if the command was successful
-            if output.status.success() {
-                // Convert the output bytes to a string
-                log::debug!("Successfully uninstalled gs/win");
-                return Ok(());
-            }
-            eprintln!("PowerShell command failed:\n{:?}", output.status);
-            return Err(Box::new(MyError::new(
-                "Failed to get installations: Studio",
-            )));
-        }
-        /* Try HubKit */
-        if &self.product.name == &product::PRODUCT_GRAVIO_HUBKIT.name {
-            #[cfg(target_os = "windows")]
-            {
-                let command = format!("msiexec /x \"{}\"", self.identifier);
-                let output = Command::new("powershell")
-                    .arg("-Command")
-                    .arg(command)
-                    .output()?;
-
-                // Check if the command was successful
-                if output.status.success() {
-                    // Convert the output bytes to a string
-                    log::debug!("Successfully uninstalled HubKit");
-                    return Ok(());
-                }
-                eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(MyError::new(
+                return Err(Box::new(GravioError::new(
                     "Failed to get installations: Studio",
                 )));
             }

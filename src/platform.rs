@@ -2,7 +2,7 @@ use std::{fmt::Display, str::FromStr};
 
 use serde::Deserialize;
 
-use crate::gman_error::MyError;
+use crate::gman_error::GravioError;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub(crate) enum Platform {
@@ -15,7 +15,7 @@ pub(crate) enum Platform {
 }
 
 impl FromStr for Platform {
-    type Err = MyError;
+    type Err = GravioError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -25,7 +25,7 @@ impl FromStr for Platform {
             "macOS" => Ok(Self::Mac),
             "rpi" => Ok(Self::RaspberryPi),
             "Linux" => Ok(Self::Linux),
-            _ => Err(MyError::new("Not a valid Platform string")),
+            _ => Err(GravioError::new("Not a valid Platform string")),
         }
     }
 }

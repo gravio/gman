@@ -1,29 +1,17 @@
-use std::ops::Deref;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::Duration;
-use std::{cmp::min, fmt::Write};
-use std::{fs, thread};
+use std::fs;
+use std::str::FromStr as _;
 
-use indicatif::{ProgressBar, ProgressState, ProgressStyle};
-use tabled::grid::records::vec_records::CellInfo;
+use std::{fs::File, io::BufReader, process::Command};
 
-use std::{fs::File, io::BufReader, path::Path, process::Command};
-
-use crate::candidate::{
-    self, Candidate, InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter,
-};
-use crate::gman_error::MyError;
+use crate::candidate::{InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter};
+use crate::gman_error::GravioError;
 use crate::platform::Platform;
 use crate::{
     app, download_artifact, get_build_id_by_candidate, get_builds, product, CandidateRepository,
     ClientConfig,
 };
 
-use tabled::{
-    settings::{object::Rows, Alignment, Modify, Style},
-    Table, Tabled,
-};
+use tabled::settings::{object::Rows, Alignment, Modify, Style};
 
 pub struct Client {
     pub config: ClientConfig,
@@ -97,7 +85,7 @@ impl Client {
 
         let current_platform = Platform::platform_for_current_platform();
         if current_platform.is_none() {
-            return Err(Box::new(MyError::new(
+            return Err(Box::new(GravioError::new(
                 "Cant get candidate builds for platform, current platform is not supported",
             )));
         }
@@ -126,15 +114,16 @@ impl Client {
     pub fn uninstall(
         &self,
         name: &str,
-        version: &Option<String>,
+        version: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Attempting to find uninstallation target for {}", &name);
 
-        let lower_name = name.to_lowercase();
+        println!("Looking to uninstall an item: {}", name);
+        let name_lower = name.to_lowercase();
         let installed = self.get_installed();
         let uninstall = installed.iter().find(|candidate| {
-            if candidate.product_name.to_lowercase() == lower_name {
-                if let Some(v) = version {
+            if candidate.product_name.to_lowercase() == name_lower {
+                if let Some(v) = &version {
                     &candidate.version == v
                 } else {
                     true
@@ -147,45 +136,66 @@ impl Client {
         match uninstall {
             Some(candidate) => {
                 log::debug!("Found uninstallation target, will attempt an uninstall");
+                println!(
+                    "Found uninstallation target. Attempting to uninstall {}",
+                    candidate.product_name
+                );
                 candidate.uninstall()?;
                 println!("Successfully uninstalled {}", &candidate.product_name);
                 Ok(())
             }
             None => {
                 eprintln!("No item named {} found on system, cannot uninstall", &name);
-                Err(Box::new(MyError::new("No item found")))
+                Err(Box::new(GravioError::new("No item found")))
             }
         }
     }
 
     pub async fn install(
         &self,
-        candidate: &SearchCandidate,
+        search: &SearchCandidate,
         automatic_upgrade: Option<bool>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!(
             "Setting up installation prep for {} @ {}",
-            &candidate.product_name,
-            &candidate.version_or_identifier_string(),
+            &search.product_name,
+            &search.version_or_identifier_string(),
         );
 
         /* Locate the resource (check if in cache, if not, check online) */
-        let cached_candidate = self.locate_in_cache(candidate);
+        let cached_candidate = self.locate_in_cache(search);
         let actual_candidate = if let Some(p) = cached_candidate {
             log::debug!(
                 "Found installation executable for {}@{} in path",
-                &candidate.product_name,
-                &candidate.version_or_identifier_string()
+                &search.product_name,
+                &search.version_or_identifier_string()
             );
 
-            if let None = candidate.version {
+            if let None = search.version {
                 if automatic_upgrade.is_none() {
                     /* version unspecified, prompt user to optionally fetch latest from build server */
-                    println!("A candidate for installation has been found in your local cache, but since the version was unspecified it may be oudated. Would you like to check the remote repositories for updated versions? (y/n)");
+                    println!("A candidate for installation has been found in the local cache, but since the version was unspecified it may be oudated. Would you like to check the remote repositories for updated versions? [y/N]");
                     println!("{:#?}", &p);
                     let mut buffer = String::new();
                     std::io::stdin().read_line(&mut buffer)?;
-                    if Self::is_console_confirm(&buffer) {}
+                    if Self::is_console_confirm(&buffer) {
+                        println!("Will search for more recent versions, and will use this cached item as fallback");
+                        todo!()
+                    } else {
+                        println!("Will not search for more recent versions, will install this cached item");
+                        todo!()
+                    }
+                } else if automatic_upgrade.is_some() {
+                    match automatic_upgrade.unwrap() {
+                        false => {
+                            println!("A candidate for installation has been found in the local cache. Because version information wasnt specified, it may be outdated, but automatic upgrade was false. Will install local cache version.");
+                            todo!();
+                        }
+                        true => {
+                            println!("A candidate for installation has been found in the local cache. Automatic upgrade is true, will attempt to find later version on build server and will use this cached item as fallback");
+                            todo!()
+                        }
+                    };
                 }
             }
             p
@@ -193,8 +203,8 @@ impl Client {
             /* Download the resource (to cache) */
             log::debug!(
                 "Installation executable for {}@{} not found in cache, attempting to download from repository",
-                &candidate.product_name,
-                &candidate.version_or_identifier_string()
+                &search.product_name,
+                &search.version_or_identifier_string()
             );
 
             let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
@@ -202,11 +212,11 @@ impl Client {
             let valid_repositories = self.get_valid_repositories_for_platform();
 
             let result =
-                get_build_id_by_candidate(&http_client, candidate, &valid_repositories).await?;
+                get_build_id_by_candidate(&http_client, search, &valid_repositories).await?;
 
             match result {
                 Some(found) => {
-                    let downloaded_path = download_artifact(
+                    let _ = download_artifact(
                         &http_client,
                         &found.0,
                         &found.1,
@@ -225,8 +235,8 @@ impl Client {
         };
 
         /* Launch installer */
-
-        Ok(())
+        let binary_path = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
+        actual_candidate.install(&binary_path)
     }
 
     /// Attempts to locate the installer for the candiate in the local cache
@@ -344,23 +354,21 @@ impl Client {
             } else {
                 // Print the error message if the command failed
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(MyError::new(
+                return Err(Box::new(GravioError::new(
                     "Failed to get installations: Studio",
                 )));
             }
-
-            // Remove-AppxPackage
         }
 
         /* get HubKit */
         {
-            // Uninstall-Package "Gravio HubKit  5.2.1.7032"
             let command = r#"
             foreach($obj in Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall") {
                 $dn = $obj.GetValue('DisplayName')
                 if($dn -ne $null -and $dn.Contains('Gravio HubKit')) {
+                  $key_name = ($obj | Select-Object Name | Split-Path -Leaf).replace('}}', '}')
                   $ver = $obj.GetValue('DisplayVersion')
-                  Write-Host $dn@$ver@$obj
+                  Write-Host $dn@$ver@$key_name
                 }
               }"#;
 
@@ -376,20 +384,7 @@ impl Client {
                 if result.len() > 0 {
                     let hubkit_splits: Vec<&str> = result.split("@").collect();
                     let version = hubkit_splits[1].trim().to_owned();
-                    let identifier = hubkit_splits[0].trim().to_owned();
-                    let key_name = {
-                        let key = hubkit_splits[2].trim();
-                        let id_start_idx = key
-                            .find('{')
-                            .expect("Expected registry key to have open brace ({)");
-                        let id_end_idx = key
-                            .find('}')
-                            .expect("Expected registry key to have close brace (})");
-                        if id_start_idx + 1 >= key.len() || id_start_idx >= id_end_idx {
-                            return Err(Box::new(MyError::new("Registry key was invalid, the opening brace was at the end of the string")));
-                        }
-                        &key[id_start_idx..id_end_idx + 1]
-                    };
+                    let identifier = hubkit_splits[2].trim().to_owned();
 
                     let installed_product = InstalledProduct {
                         product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
@@ -402,7 +397,7 @@ impl Client {
             } else {
                 // Print the error message if the command failed
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(MyError::new(
+                return Err(Box::new(GravioError::new(
                     "Failed to get installations: HubKit",
                 )));
             }
@@ -473,22 +468,13 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        env,
-        path::{Path, PathBuf},
-        str::FromStr,
-    };
-
-    use serde::{Deserialize, Deserializer};
-    use serde_json::Value;
 
     use crate::{
-        app,
-        candidate::{Candidate, SearchCandidate},
+        candidate::SearchCandidate,
         cli::Target,
         download_artifact, get_build_id_by_candidate,
-        product::{self, Product},
-        Client, TeamCityArtifacts, TeamCityBranch, TeamCityBuild, TeamCityBuilds, TeamCityRoot,
+        product::{self},
+        Client, TeamCityArtifacts, TeamCityBranch, TeamCityBuild, TeamCityBuilds,
     };
 
     #[tokio::test]
@@ -593,9 +579,6 @@ mod tests {
     #[tokio::test]
     async fn install_hubkit_non_existant() {
         let c = Client::load().expect("Failed to load client");
-        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
-        let vv = c.get_valid_repositories_for_platform();
-
         let target: Target = Target::Identifier("lmao".to_owned());
 
         let candidate = SearchCandidate::new(
@@ -620,9 +603,6 @@ mod tests {
     #[tokio::test]
     async fn install_hubkit_develop() {
         let c = Client::load().expect("Failed to load client");
-        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
-        let vv = c.get_valid_repositories_for_platform();
-
         let target: Target = Target::Identifier("develop".to_owned());
 
         let candidate = SearchCandidate::new(
@@ -642,6 +622,37 @@ mod tests {
         c.install(&candidate, Some(false))
             .await
             .expect("Failed to install item");
+    }
+
+    #[tokio::test]
+    async fn install_hubkit_specific_version() {
+        let c = Client::load().expect("Failed to load client");
+        let target: Target = Target::Version("5.2.1-7049".to_owned());
+
+        let candidate = SearchCandidate::new(
+            product::PRODUCT_GRAVIO_HUBKIT.name,
+            match &target {
+                Target::Identifier(_) => None,
+                Target::Version(x) => Some(x.as_str()),
+            },
+            match &target {
+                Target::Identifier(x) => Some(x.as_str()),
+                Target::Version(_) => None,
+            },
+            None,
+        )
+        .unwrap();
+
+        c.install(&candidate, Some(false))
+            .await
+            .expect("Failed to install item");
+    }
+
+    #[test]
+    fn uninstall_hubkit() {
+        let c = Client::load().expect("Failed to load client");
+
+        let _ = c.uninstall("hubkit", None);
     }
 
     #[test]
@@ -720,9 +731,6 @@ mod tests {
         let client = Client::load().expect("Failed to load client");
         let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
         let vv = client.get_valid_repositories_for_platform();
-
-        let target: Target = Target::Identifier("develop".to_owned());
-
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
 
         let c = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
@@ -732,7 +740,7 @@ mod tests {
             .expect("expected to get build id during test for develop hubkit install")
             .expect("Expected build id to exist");
 
-        let res = download_artifact(
+        let _ = download_artifact(
             &http_client,
             &with_build_id.0,
             &with_build_id.1,
@@ -747,13 +755,7 @@ mod tests {
 
     #[test]
     fn try_expand() {
-        let p = "%temp%";
-        fn context(_: &str) -> Option<String> {
-            None
-        }
-        // env::
-        let xx = shellexpand::env_with_context_no_errors("%temp%", context);
-        let xx = shellexpand::tilde("%temp%");
-        println!("{:#?}", xx);
+        let expanded_no_percent = shellexpand::tilde("%temp%");
+        println!("{:#?}", expanded_no_percent);
     }
 }

@@ -2,25 +2,25 @@ use core::fmt;
 use std::error::Error;
 
 #[derive(Debug)]
-pub struct MyError {
+pub struct GravioError {
     pub details: String,
 }
 
-impl MyError {
-    pub fn new(msg: &str) -> MyError {
-        MyError {
+impl GravioError {
+    pub fn new(msg: &str) -> GravioError {
+        GravioError {
             details: msg.to_string(),
         }
     }
 }
 
-impl fmt::Display for MyError {
+impl fmt::Display for GravioError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.details)
     }
 }
 
-impl Error for MyError {
+impl Error for GravioError {
     fn description(&self) -> &str {
         &self.details
     }

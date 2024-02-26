@@ -1,16 +1,9 @@
-use std::{
-    borrow::Cow,
-    env, fs,
-    path::{self, PathBuf},
-    str::FromStr,
-};
+use std::{borrow::Cow, env, fs, path::PathBuf, str::FromStr};
 
-// use log::Log;
 use lazy_static::lazy_static;
-use serde::{de::Error, Deserialize, Serialize, Serializer};
-use simple_logger::SimpleLogger;
+use serde::Deserialize;
 
-use crate::{app, gman_error::MyError, platform::Platform};
+use crate::{app, platform::Platform};
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct CandidateRepository {

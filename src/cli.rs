@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
 
-use crate::gman_error::MyError;
+use crate::gman_error::GravioError;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -23,9 +23,14 @@ pub enum Commands {
     /// Installs the [candidate] with optional [version]
     Install {
         name: String,
-        ver: Option<String>,
+        build_or_branch: Option<String>,
+        #[clap(short, long, help = "Product flavor (e.g.,, Sideloading, Arm64 etc)")]
         flavor_str: Option<String>,
-        #[clap(short, long, help = "A boolean flag")]
+        #[clap(
+            short,
+            long,
+            help = "Whether to find newer build versions, if `build` isnt specified. Leave empty to be prompted."
+        )]
         automatic_upgrade: Option<bool>,
     },
     /// Lists items that are installed on this machine
@@ -54,7 +59,7 @@ impl ToString for Target {
 }
 
 impl FromStr for Target {
-    type Err = MyError;
+    type Err = GravioError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match VERSION_REGEX.find_iter(s).next() {
