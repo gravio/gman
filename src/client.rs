@@ -440,7 +440,11 @@ impl Client {
     }
 
     /// Formats a list of Gravio Candidate items into a table and prints to stdout
-    pub fn format_candidate_table<'a>(&self, candidates: Vec<impl Into<TablePrinter>>) {
+    pub fn format_candidate_table<'a>(
+        &self,
+        candidates: Vec<impl Into<TablePrinter>>,
+        show_installed: bool,
+    ) {
         log::debug!(
             "Formatting candidate list with {} candidates",
             candidates.len()
@@ -464,9 +468,28 @@ impl Client {
         });
 
         let mut builder = tabled::builder::Builder::default();
-        builder.push_record(["Name", "Version", "Identifier", "Flavor"]);
+        let header_record = {
+            let mut header: Vec<&str> = vec!["Name", "Version", "Identifier", "Flavor"];
+            if show_installed {
+                header.push("Installed");
+            }
+            header
+        };
+        builder.push_record(header_record);
         for item in &data {
-            builder.push_record([&item.name, &item.version, &item.identifier, &item.flavor]);
+            let record = {
+                let mut r = vec![
+                    item.name.to_owned(),
+                    item.version.to_owned(),
+                    item.identifier.to_owned(),
+                    item.flavor.to_owned(),
+                ];
+                if (show_installed && item.installed) {
+                    r.push(item.installed.to_string());
+                }
+                r
+            };
+            builder.push_record(record);
         }
         if data.is_empty() {
             builder.push_record(["No candidates available"]);

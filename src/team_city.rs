@@ -175,6 +175,7 @@ pub async fn get_builds<'a>(
                                         product_name: product.name.to_owned(),
                                         flavor: flavor.to_owned(),
                                         repo_location: repo_url.to_owned(),
+                                        installed: false,
                                     };
                                     candidates.push(ci);
                                 }
@@ -273,6 +274,7 @@ pub async fn get_build_id_by_candidate<'a>(
                             identifier: build.branch_name.unwrap_or(build.build_number.to_owned()),
                             flavor: candidate.flavor.to_owned(),
                             repo_location: repo_url.to_owned(),
+                            installed: false,
                         };
                         return Ok(Some((c, repo)));
                     }

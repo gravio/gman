@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     candidates.retain_mut(|cd| !cd.product_equals(&installed))
                 }
             }
-            c.format_candidate_table(candidates);
+            c.format_candidate_table(candidates, true);
             exit(0)
         }
         /* Uninstall */
@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Some(Commands::Installed) => {
             let c = Client::load().expect("Couldnt load client");
             let candidates = c.get_installed();
-            c.format_candidate_table(candidates);
+            c.format_candidate_table(candidates, false);
             exit(0)
         }
         None => {

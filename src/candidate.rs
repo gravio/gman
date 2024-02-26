@@ -25,17 +25,8 @@ pub struct TablePrinter {
     pub identifier: String,
     #[tabled(order = 3)]
     pub flavor: String,
-}
-
-impl From<&InstallationCandidate> for TablePrinter {
-    fn from(value: &InstallationCandidate) -> Self {
-        TablePrinter {
-            identifier: value.identifier.to_owned(),
-            name: value.product_name.to_owned(),
-            version: value.version.to_owned(),
-            flavor: value.flavor.name.to_owned(),
-        }
-    }
+    #[tabled(order = 4)]
+    pub installed: bool,
 }
 
 impl Into<TablePrinter> for InstallationCandidate {
@@ -45,6 +36,7 @@ impl Into<TablePrinter> for InstallationCandidate {
             name: self.product_name.to_owned(),
             version: self.version.to_owned(),
             flavor: self.flavor.name.to_owned(),
+            installed: self.installed,
         }
     }
 }
@@ -56,6 +48,7 @@ impl Into<TablePrinter> for InstalledProduct {
             name: self.product_name.to_owned(),
             version: self.version.to_owned(),
             flavor: String::default(),
+            installed: true,
         }
     }
 }
@@ -67,6 +60,7 @@ impl From<&InstalledProduct> for TablePrinter {
             name: value.product_name.to_owned(),
             version: value.version.to_owned(),
             flavor: String::default(),
+            installed: true,
         }
     }
 }
@@ -149,6 +143,8 @@ pub struct InstallationCandidate {
     pub identifier: String,
 
     pub flavor: Flavor,
+
+    pub installed: bool,
 }
 
 impl InstallationCandidate {
@@ -342,6 +338,7 @@ impl FromStr for InstallationCandidate {
             version: version.to_owned(),
             identifier: identifier.to_owned(),
             flavor: flavor.unwrap().to_owned(),
+            installed: false,
         };
 
         Ok(c)
@@ -424,6 +421,7 @@ mod tests {
             product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
             remote_id: String::default(),
             repo_location: String::default(),
+            installed: false,
         };
 
         let fname = i.make_cached_file_name();
