@@ -1,15 +1,31 @@
-use std::str::FromStr;
+use futures_util::StreamExt;
+use indicatif::{ProgressBar, ProgressState, ProgressStyle};
+use log::Log;
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+
+use std::thread;
+use std::time::Duration;
+use std::{cmp::min, fmt::Write};
 
 use bytes::Bytes;
-use http_body_util::BodyExt as _;
 use hyper;
-use reqwest::Url;
+use hyper::body;
+
+use reqwest::{
+    header::{HeaderValue, RANGE},
+    Url,
+};
 
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
-use tokio::io::AsyncWriteExt as _;
+use tokio::{fs, io::AsyncWriteExt as _, sync::futures};
 
 use crate::{
+    app,
     candidate::{InstallationCandidate, SearchCandidate},
     gman_error::MyError,
     platform::Platform,
@@ -195,8 +211,8 @@ pub async fn get_builds<'a>(
 pub async fn get_build_id_by_candidate<'a>(
     http_client: &reqwest::Client,
     candidate: &SearchCandidate,
-    valid_repositories: &[&CandidateRepository],
-) -> Result<Option<InstallationCandidate>, Box<dyn std::error::Error>> {
+    valid_repositories: &[&'a CandidateRepository],
+) -> Result<Option<(InstallationCandidate, &'a CandidateRepository)>, Box<dyn std::error::Error>> {
     if valid_repositories.is_empty() {
         return Err(Box::new(MyError::new(
             "No repositories supplied for searching",
@@ -270,7 +286,7 @@ pub async fn get_build_id_by_candidate<'a>(
                             flavor: candidate.flavor.to_owned(),
                             repo_location: repo_url.to_owned(),
                         };
-                        return Ok(Some(c));
+                        return Ok(Some((c, repo)));
                     }
                 }
                 Err(e) => {
@@ -292,96 +308,182 @@ pub async fn get_build_id_by_candidate<'a>(
     )))
 }
 
+/// Downloads the given artifact from the build server, first into the temp directory, and then moves it to the cache directory
 pub async fn download_artifact<'a>(
+    http_client: &reqwest::Client,
     candidate: &'a InstallationCandidate,
-) -> Result<(), Box<dyn std::error::Error>> {
+    repo: &CandidateRepository,
+    temp_dir: &Path,
+    cache_dir: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     log::debug!(
         "Contacting TeamCity for download link on candidate {}",
         &candidate.remote_id
     );
 
-    // // hyper::
-    // // let client = Client::new();
-
-    // http_client
-    //     // Fetch the url...
-    //     .get(url)
-    //     .send()
-    //     // And then, if we get a response back...
-    //     .and_then(|res| {
-    //         println!("Response: {}", res.status());
-    //         println!("Headers: {:#?}", res.headers());
-
-    //         let mut file = std::fs::File::create(file_name).unwrap();
-    //         // The body is a stream, and for_each returns a new Future
-    //         // when the stream is finished, and calls the closure on
-    //         // each chunk of the body...
-    //         res.into_body().for_each(move |chunk| {
-    //             file.write_all(&chunk)
-    //                 .map_err(|e| panic!("example expects stdout is open, error={}", e))
-    //         })
-    //     })
-    //     // If all good, just tell the user...
-    //     .map(|_| {
-    //         println!("\n\nDone.");
-    //     })
-    //     // If there was an error, let the user know...
-    //     .map_err(|err| {
-    //         eprintln!("Error {}", err);
-    //     });
-    Ok(())
-}
-
-pub async fn download2(
-    fully_qualified_candidate: &Candidate,
-    repo: &CandidateRepository,
-) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(u) = &repo.repository_server {
-        // let uri_str = format!(
-        //     "{}/repository/download/{}/",
-        //     u, fully_qualified_candidate.product.teamcity_id
-        // );
-        // let url = hyper::Uri::from_static("https://google.com");
-        // let host = url.host().expect("uri has no host");
-        // let port = url.port_u16().unwrap_or(443);
-        // let addr = format!("{}:{}", host, port);
-        // let stream = tokio::net::TcpStream::connect(addr).await?;
-        // let io = hyper_util::rt::TokioIo::new(stream);
+        let uri_str = format!(
+            "{}/repository/download/{}/{}:id/{}",
+            u,
+            candidate.flavor.teamcity_id,
+            candidate.remote_id,
+            candidate.flavor.teamcity_executable_path
+        );
 
-        // let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
-        // tokio::task::spawn(async move {
-        //     if let Err(err) = conn.await {
-        //         println!("Connection failed: {:?}", err);
-        //     }
-        // });
+        let url = ensure_scheme(&uri_str)?;
 
-        // let authority = url.authority().unwrap().clone();
+        log::debug!("Downloading from url {}", &url.as_str());
 
-        // let path = url.path();
-        // let req = hyper::Request::builder()
-        //     .uri(path)
-        //     .header(hyper::header::HOST, authority.as_str())
-        //     .body(http_body_util::Empty::<Bytes>::new())?;
+        /* Send HEAD for file size info */
+        let request: reqwest::Request = match &repo.repository_credentials {
+            Some(credentials) => http_client
+                .head(url.clone())
+                .bearer_auth(credentials)
+                .build()
+                .unwrap(),
+            None => http_client.get(url.clone()).build().unwrap(),
+        };
+        let response = http_client.execute(request).await?;
+        let res_status = response.status();
+        if res_status != 200 {
+            log::warn!(
+                "Failed to get TeamCity download file size {}, ({})",
+                &repo.name,
+                &res_status,
+            );
+            if res_status == 401 || res_status == 403 {
+                eprintln!("Not authorized to access repository {}", &repo.name);
+                return Err(Box::new(MyError::new("Not authorized")));
+            }
+            if res_status == 404 {
+                eprintln!("File not found on repo {}", &repo.name);
+                return Err(Box::new(MyError::new("File not found")));
+            }
+            return Err(Box::new(MyError::new(
+                "Unknown error occurred during download request",
+            )));
+        }
+        let length = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .ok_or("response doesn't include the content length")?;
+        let length =
+            u64::from_str(length.to_str()?).map_err(|_| "invalid Content-Length header")?;
 
-        // let mut res = sender.send_request(req).await?;
+        let output_file_temp_path = &candidate.make_output_for_candidate(temp_dir);
+        let mut output_file_temp = tokio::fs::File::create(&output_file_temp_path).await?;
 
-        // println!("Response: {}", res.status());
-        // println!("Headers: {:#?}\n", res.headers());
+        /* Send GET for body */
+        let request: reqwest::Request = match &repo.repository_credentials {
+            Some(credentials) => http_client
+                .head(url.clone())
+                .bearer_auth(credentials)
+                .build()
+                .unwrap(),
+            None => http_client.get(url.clone()).build().unwrap(),
+        };
+        let response = http_client.execute(request).await?;
+        let res_status = response.status();
+        if res_status != 200 {
+            log::warn!(
+                "Failed to get TeamCity download file size {}, ({})",
+                &repo.name,
+                &res_status,
+            );
+            if res_status == 401 || res_status == 403 {
+                eprintln!("Not authorized to access repository {}", &repo.name);
+                return Err(Box::new(MyError::new("Not authorized")));
+            }
+            if res_status == 404 {
+                eprintln!("File not found on repo {}", &repo.name);
+                return Err(Box::new(MyError::new("File not found")));
+            }
+            return Err(Box::new(MyError::new(
+                "Unknown error occurred during download request",
+            )));
+        }
 
-        // // Stream the body, writing each chunk to stdout as we get it
-        // // (instead of buffering and printing at the end).
-        // while let Some(next) = res.frame().await {
-        //     let frame = next?;
-        //     if let Some(chunk) = frame.data_ref() {
-        //         tokio::io::stdout().write_all(&chunk).await?;
-        //     }
-        // }
+        /* disable logging here  */
+        let last_level = app::disable_logging();
+        let progress_bar = ProgressBar::new(length);
+        progress_bar.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                .unwrap()
+                .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
+                .progress_chars("#>-"));
 
-        // println!("\n\nDone!");
-        Ok(())
+        const CHUNK_SIZE: u64 = 1024 * 1024; // 1 mb chunk size
+        let mut downloaded: u64 = 0;
+        for range in PartialRangeIter::new(0, length - 1, CHUNK_SIZE)? {
+            let request: reqwest::Request = match &repo.repository_credentials {
+                Some(credentials) => http_client
+                    .get(url.clone())
+                    .bearer_auth(credentials)
+                    .header(RANGE, range)
+                    .build()
+                    .unwrap(),
+                None => http_client.get(url.clone()).build().unwrap(),
+            };
+            let response = http_client.execute(request).await?;
+
+            let status = response.status();
+            if !(status == 200 || status == 206) {
+                return Err(Box::new(MyError::new("Unexpected error during download")));
+            }
+
+            let mut byte_stream = response.bytes_stream();
+            while let Some(item) = byte_stream.next().await {
+                tokio::io::copy(&mut item?.as_ref(), &mut output_file_temp).await?;
+            }
+
+            downloaded += CHUNK_SIZE;
+
+            progress_bar.set_position(downloaded);
+        }
+
+        /* Move file to cache directory */
+        let output_file_cache_path = candidate.make_output_for_candidate(cache_dir);
+        tokio::fs::rename(&output_file_temp_path, &output_file_cache_path).await?;
+        app::enable_logging(last_level);
+
+        Ok(output_file_cache_path)
     } else {
         Err(Box::new(MyError::new(
             "Repository did not have a Server specified",
         )))
+    }
+}
+
+struct PartialRangeIter {
+    start: u64,
+    end: u64,
+    buffer_size: u64,
+}
+
+impl PartialRangeIter {
+    pub fn new(start: u64, end: u64, buffer_size: u64) -> Result<Self, Box<dyn std::error::Error>> {
+        if buffer_size == 0 {
+            Err("invalid buffer_size, give a value greater than zero.")?;
+        }
+        Ok(PartialRangeIter {
+            start,
+            end,
+            buffer_size,
+        })
+    }
+}
+
+impl Iterator for PartialRangeIter {
+    type Item = HeaderValue;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.start > self.end {
+            None
+        } else {
+            let prev_start = self.start;
+            self.start += std::cmp::min(self.buffer_size as u64, self.end - self.start + 1);
+            Some(
+                HeaderValue::from_str(&format!("bytes={}-{}", prev_start, self.start - 1))
+                    .expect("string provided by format!"),
+            )
+        }
     }
 }

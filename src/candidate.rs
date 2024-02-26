@@ -1,4 +1,8 @@
-use std::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+    str::{FromStr, Split},
+};
 
 use tabled::{Table, Tabled};
 
@@ -104,6 +108,7 @@ impl SearchCandidate {
                 .iter()
                 .find(|x| x.platform == current_platform),
         };
+
         if flavor_str.is_none() {
             eprintln!("No flavor found, not even default");
             return None;
@@ -116,6 +121,7 @@ impl SearchCandidate {
             flavor: flavor_str.unwrap().to_owned(),
         })
     }
+
     pub fn version_or_identifier_string(&self) -> &str {
         if let Some(v) = &self.version {
             v.as_str()
@@ -153,6 +159,39 @@ impl InstallationCandidate {
         } else {
             &self.version
         }
+    }
+
+    /// Returns the file name of the file this InstallationCandidate represents
+    pub fn get_binary_file_name(&self) -> String {
+        PathBuf::from_str(&self.flavor.teamcity_executable_path)
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    /// Makes a file name for the InstallationCandidate, encoding the the necessary info to make lookups easy
+    ///
+    /// format is "product_name@platform@flavor_name@identifier@version@binary_name"
+    /// e.g., "graviostudio@windows@sideloading@develop@5.2.1-7033@GravioStudio.msi"
+    pub fn make_cached_file_name(&self) -> String {
+        format!(
+            "{}@{}@{}@{}@{}@{}",
+            &self.product_name,
+            &self.flavor.platform,
+            &self.flavor.name,
+            &self.identifier,
+            &self.version,
+            &self.get_binary_file_name()
+        )
+    }
+
+    /// Gets the path of the file that the InstallationCandidate downloads to on disk
+    pub fn make_output_for_candidate(&self, dir: &Path) -> PathBuf {
+        let fname = &self.make_cached_file_name();
+        dir.join(fname)
     }
 }
 
@@ -306,5 +345,34 @@ impl Candidate {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::product;
+
+    use super::InstallationCandidate;
+
+    #[test]
+    fn test_cached_file_name() {
+        let i = InstallationCandidate {
+            flavor: product::PRODUCT_GRAVIO_HUBKIT
+                .flavors
+                .first()
+                .unwrap()
+                .to_owned(),
+            identifier: "develop".to_owned(),
+            version: "5.2.3-7023".to_owned(),
+            product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
+            remote_id: String::default(),
+            repo_location: String::default(),
+        };
+
+        let fname = i.make_cached_file_name();
+        assert_eq!(
+            fname,
+            "HubKit@Windows@WindowsHubkit@develop@5.2.3-7023@GravioHubKit.msi"
+        );
     }
 }

@@ -1,6 +1,7 @@
-use std::thread;
+use std::path::PathBuf;
 use std::time::Duration;
 use std::{cmp::min, fmt::Write};
+use std::{fs, thread};
 
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use tabled::grid::records::vec_records::CellInfo;
@@ -8,11 +9,14 @@ use tabled::grid::records::vec_records::CellInfo;
 use std::{fs::File, io::BufReader, path::Path, process::Command};
 
 use crate::candidate::{
-    Candidate, InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter,
+    self, Candidate, InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter,
 };
 use crate::gman_error::MyError;
 use crate::platform::Platform;
-use crate::{get_build_id_by_candidate, get_builds, product, CandidateRepository, ClientConfig};
+use crate::{
+    app, download_artifact, get_build_id_by_candidate, get_builds, product, CandidateRepository,
+    ClientConfig,
+};
 
 use tabled::{
     settings::{object::Rows, Alignment, Modify, Style},
@@ -25,6 +29,8 @@ pub struct Client {
 impl Client {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let client_config = Client::load_config()?;
+        app::init_logging();
+        app::enable_logging(client_config.log_level);
         let c = Client::new(client_config);
         Ok(c)
     }
@@ -41,6 +47,7 @@ impl Client {
 
         // Read the JSON contents of the file as an instance of `User`.
         let config: ClientConfig = serde_json::from_reader(reader)?;
+        config.ensure_directories();
         Ok(config)
     }
 
@@ -161,12 +168,13 @@ impl Client {
 
         /* Locate the resource (check if in cache, if not, check online) */
         let cache_path = self.locate_in_cache(candidate);
-        if let Some(p) = cache_path {
+        let xyz = if let Some(p) = cache_path {
             log::debug!(
                 "Found installation executable for {}@{} in path",
                 &candidate.product_name,
                 &candidate.version_or_identifier_string()
             );
+            p
         } else {
             /* Download the resource (to cache) */
             log::debug!(
@@ -184,35 +192,100 @@ impl Client {
 
             match result {
                 Some(found) => {
-                    let mut downloaded = 0;
-                    let total_size = 231231231;
+                    let downloaded_path = download_artifact(
+                        &http_client,
+                        &found.0,
+                        &found.1,
+                        &self.config.temp_download_directory,
+                        &self.config.cache_directory,
+                    )
+                    .await?;
 
-                    let pb = ProgressBar::new(total_size);
-                    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-                .unwrap()
-                .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
-                .progress_chars("#>-"));
-
-                    while downloaded < total_size {
-                        let new = min(downloaded + 223211, total_size);
-                        downloaded = new;
-                        pb.set_position(new);
-                        thread::sleep(Duration::from_millis(12));
-                    }
-
-                    pb.finish_with_message("downloaded");
+                    downloaded_path
                 }
-                None => println!("No candidates found"),
+                None => {
+                    println!("No candidates found");
+                    return Ok(());
+                }
             }
-        }
+        };
 
         /* Launch installer */
 
         Ok(())
     }
 
-    /// Attempts to locate the installer for the candiate in the locale cache
-    fn locate_in_cache(&self, candidate: &SearchCandidate) -> Option<&Path> {
+    /// Attempts to locate the installer for the candiate in the local cache
+    fn locate_in_cache(&self, candidate: &SearchCandidate) -> Option<PathBuf> {
+        let current_platform =
+            Platform::platform_for_current_platform().expect("Current platform is not supported");
+        match fs::read_dir(&self.config.cache_directory) {
+            Ok(list_dir) => {
+                for entry_result in list_dir {
+                    if let Ok(entry) = entry_result {
+                        if let Ok(fname) = entry.file_name().into_string() {
+                            let splits = fname.split('@').collect::<Vec<_>>();
+                            let mut match_vals: Vec<bool> = Vec::new();
+                            for (i, x) in splits.iter().enumerate() {
+                                let xlower = x.to_lowercase();
+                                if i == 0 {
+                                    /* Check product */
+                                    if xlower != candidate.product_name.to_lowercase() {
+                                        /* not a product match */
+                                        match_vals.push(false);
+                                        break;
+                                    }
+                                    match_vals.push(true);
+                                } else if i == 1 {
+                                    /* check Platform */
+                                    if xlower != current_platform.to_string().to_lowercase() {
+                                        /* not a platform match */
+                                        match_vals.push(false);
+                                        break;
+                                    }
+                                    match_vals.push(true);
+                                } else if i == 2 {
+                                    /* check flavor */
+                                    if xlower != candidate.flavor.name.to_lowercase() {
+                                        /* not a flavor match */
+                                        match_vals.push(false);
+                                        break;
+                                    }
+                                    match_vals.push(true);
+                                } else if i == 3 {
+                                    /* check identifier */
+                                    if let Some(ident) = &candidate.identifier {
+                                        if xlower != ident.to_lowercase() {
+                                            /* not an identifier match */
+                                            match_vals.push(false);
+                                            break;
+                                        }
+                                        match_vals.push(true);
+                                    }
+                                } else if i == 4 {
+                                    if let Some(version) = &candidate.version {
+                                        if xlower != version.to_lowercase() {
+                                            /* not a version match */
+                                            match_vals.push(false);
+                                            break;
+                                        }
+                                        match_vals.push(true);
+                                    }
+                                }
+                            }
+
+                            if !match_vals.is_empty() && match_vals.iter().all(|x| *x) {
+                                log::info!("Found a matching local binary: {}", fname);
+                                return Some(entry.path());
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to read cache directory: {}", e)
+            }
+        }
         None
     }
     /// Lists items installed to this machine
@@ -386,10 +459,17 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        env,
+        path::{Path, PathBuf},
+        str::FromStr,
+    };
+
     use serde::{Deserialize, Deserializer};
     use serde_json::Value;
 
     use crate::{
+        app,
         candidate::{Candidate, SearchCandidate},
         cli::Target,
         download_artifact, get_build_id_by_candidate,
@@ -427,7 +507,7 @@ mod tests {
                     assert!(false, "Expected results, but got empty")
                 }
                 Some(ss) => {
-                    assert!(!ss.remote_id.is_empty(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
+                    assert!(!ss.0.remote_id.is_empty(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
                 }
             },
             Err(_) => {
@@ -455,7 +535,7 @@ mod tests {
                     assert!(false, "Expected results, but got empty")
                 }
                 Some(ss) => {
-                    assert!(!ss.remote_id.is_empty(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
+                    assert!(!ss.0.remote_id.is_empty(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
                 }
             },
             Err(_) => {
@@ -513,6 +593,31 @@ mod tests {
             match &target {
                 Target::Identifier(x) => Some(x.as_str()),
                 Target::Version(x) => Some(x.as_str()),
+            },
+            None,
+        )
+        .unwrap();
+
+        c.install(&candidate).await.expect("Failed to install item");
+    }
+
+    #[tokio::test]
+    async fn install_hubkit_develop() {
+        let c = Client::load().expect("Failed to load client");
+        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
+        let vv = c.get_valid_repositories_for_platform();
+
+        let target: Target = Target::Identifier("develop".to_owned());
+
+        let candidate = SearchCandidate::new(
+            product::PRODUCT_GRAVIO_HUBKIT.name,
+            match &target {
+                Target::Identifier(_) => None,
+                Target::Version(x) => Some(x.as_str()),
+            },
+            match &target {
+                Target::Identifier(x) => Some(x.as_str()),
+                Target::Version(_) => None,
             },
             None,
         )
@@ -594,9 +699,9 @@ mod tests {
     async fn download_develop_hubkit() {
         simple_logger::SimpleLogger::new().env().init().unwrap();
 
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
         let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
-        let vv = c.get_valid_repositories_for_platform();
+        let vv = client.get_valid_repositories_for_platform();
 
         let target: Target = Target::Identifier("develop".to_owned());
 
@@ -609,10 +714,28 @@ mod tests {
             .expect("expected to get build id during test for develop hubkit install")
             .expect("Expected build id to exist");
 
-        let res = download_artifact(&with_build_id)
-            .await
-            .expect("Expected downlod not to fail");
+        let res = download_artifact(
+            &http_client,
+            &with_build_id.0,
+            &with_build_id.1,
+            &client.config.temp_download_directory,
+            &client.config.cache_directory,
+        )
+        .await
+        .expect("Expected downlod not to fail");
 
         assert!(false)
+    }
+
+    #[test]
+    fn try_expand() {
+        let p = "%temp%";
+        fn context(_: &str) -> Option<String> {
+            None
+        }
+        // env::
+        let xx = shellexpand::env_with_context_no_errors("%temp%", context);
+        let xx = shellexpand::tilde("%temp%");
+        println!("{:#?}", xx);
     }
 }

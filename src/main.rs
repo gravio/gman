@@ -1,3 +1,4 @@
+mod app;
 mod candidate;
 mod cli;
 mod client;
@@ -25,8 +26,6 @@ use crate::platform::Platform;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    simple_logger::SimpleLogger::new().env().init().unwrap();
-
     let cli = Cli::parse();
 
     match &cli.command {
