@@ -440,8 +440,6 @@ impl Client {
         });
 
         let mut builder = tabled::builder::Builder::default();
-        // builder.push_column(["Name", "Version", "Lmao"]);
-        // builder.push_column("Version");
         builder.push_record(["Name", "Version", "Identifier", "Flavor"]);
         for item in &data {
             builder.push_record([&item.name, &item.version, &item.identifier, &item.flavor]);
@@ -458,7 +456,7 @@ impl Client {
 
         if data.is_empty() {
             table
-                .modify((1, 0), tabled::settings::Span::column(3))
+                .modify((1, 0), tabled::settings::Span::column(4))
                 .modify((1, 0), Alignment::center());
         }
 
@@ -631,6 +629,30 @@ mod tests {
 
         let candidate = SearchCandidate::new(
             product::PRODUCT_GRAVIO_HUBKIT.name,
+            match &target {
+                Target::Identifier(_) => None,
+                Target::Version(x) => Some(x.as_str()),
+            },
+            match &target {
+                Target::Identifier(x) => Some(x.as_str()),
+                Target::Version(_) => None,
+            },
+            None,
+        )
+        .unwrap();
+
+        c.install(&candidate, Some(false))
+            .await
+            .expect("Failed to install item");
+    }
+
+    #[tokio::test]
+    async fn install_studio_specific_version() {
+        let c = Client::load().expect("Failed to load client");
+        let target: Target = Target::Version("5.2.4683".to_owned());
+
+        let candidate = SearchCandidate::new(
+            product::PRODUCT_GRAVIO_STUDIO.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),

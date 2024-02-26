@@ -1,12 +1,15 @@
 use std::{
+    env,
     path::{Path, PathBuf},
     process::Command,
     str::FromStr,
 };
 
 use tabled::Tabled;
+use tokio::fs;
 
 use crate::{
+    app,
     gman_error::GravioError,
     platform::Platform,
     product::{self, Flavor, Product},
@@ -149,6 +152,18 @@ pub struct InstallationCandidate {
 }
 
 impl InstallationCandidate {
+    /// Some version strings, such as with gs/win, are 3-parts, but we often need to reference them by a 4-part scheme
+    ///
+    /// e.g, 5.2.7033 -> 5.3.7033.0
+    fn make_version_4_parts(&self) -> String {
+        let mut s = self.version.to_owned();
+        let mut count = self.version.split('.').count();
+        while count < 3 {
+            count += 1;
+            s.push_str(".0");
+        }
+        s
+    }
     pub fn product_equals(&self, installed_product: &InstalledProduct) -> bool {
         &installed_product.product_name == &self.product_name
     }
@@ -187,30 +202,84 @@ impl InstallationCandidate {
     }
 
     pub fn install(&self, binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        /* Try Gravio Studio (win) */
-        if &self.product_name == &product::PRODUCT_GRAVIO_STUDIO.name.to_lowercase() {
+        /* Try Gravio Studio */
+        if &self.product_name.to_lowercase() == &product::PRODUCT_GRAVIO_STUDIO.name.to_lowercase()
+        {
             #[cfg(target_os = "windows")]
             {
-                // let command = format!("Install-AppxPackage {}", self.package_name);
-                // let output = Command::new("powershell")
-                //     .arg("-Command")
-                //     .arg(command)
-                //     .output()?;
+                log::debug!("Creating a temporary file for this gs/win extraction");
+                let tmp_folder = env::temp_dir()
+                    .join(app::APP_FOLDER_NAME)
+                    .join(self.make_cached_file_name());
+                std::fs::create_dir_all(&tmp_folder)?;
 
-                // // Check if the command was successful
-                // if output.status.success() {
-                //     // Convert the output bytes to a string
-                //     log::debug!("Successfully uninstalled gs/win");
-                //     return Ok(());
-                // }
-                // eprintln!("PowerShell command failed:\n{:?}", output.status);
-                // return Err(Box::new(MyError::new(
-                //     "Failed to get installations: Studio",
-                // )));
+                let unzip_command = format!(
+                    "Expand-Archive \"{}\" \"{}\" -force",
+                    &binary_path.to_str().unwrap(),
+                    &tmp_folder.to_str().unwrap()
+                );
+                /* extract zip to temporary directory */
+                log::debug!("Sending extract-archive request to powershell");
+                let unzip_output = Command::new("powershell")
+                    .arg("-Command")
+                    .arg(unzip_command)
+                    .output()?;
+
+                if !unzip_output.status.success() {
+                    // Convert the output bytes to a string
+                    log::debug!(
+                        "Failed to extract gs/win zip items: {}",
+                        unzip_output.status.code().unwrap()
+                    );
+                    return Err(Box::new(GravioError::new(
+                        "Failed to install Gravio Studio, couldn't extract to temp directory",
+                    )));
+                }
+
+                /* run the  Install.ps1 */
+                match std::fs::read_dir(tmp_folder) {
+                    Ok(list_dir) => {
+                        for entry_result in list_dir {
+                            if let Ok(entry) = entry_result {
+                                if entry.metadata().unwrap().is_dir() {
+                                    let install_script_loc = entry.path().join("Install.ps1");
+                                    if Path::exists(&install_script_loc) {
+                                        log::debug!("found gs/win install.ps1 file");
+                                        let install_output = Command::new("powershell")
+                                            .arg("-Command")
+                                            .arg(install_script_loc.to_str().unwrap())
+                                            .output()?;
+
+                                        if !install_output.status.success() {
+                                            // Convert the output bytes to a string
+                                            log::debug!(
+                                                "Failed to install gs/win: {}",
+                                                install_output.status.code().unwrap()
+                                            );
+                                            return Err(Box::new(GravioError::new(
+                                                    "Failed to install Gravio Studio, couldn't run install script successfully",
+                                                )));
+                                        }
+                                        return Ok(());
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        log::error!("Failed to read temporary extracted directory");
+                        return Err(Box::new(GravioError::new(
+                            "Failed to read temporary extracted directory",
+                        )));
+                    }
+                }
             }
         }
         /* Try HubKit */
-        if &self.product_name == &product::PRODUCT_GRAVIO_HUBKIT.name.to_lowercase() {
+        else if &self.product_name.to_lowercase()
+            == &product::PRODUCT_GRAVIO_HUBKIT.name.to_lowercase()
+        {
             #[cfg(target_os = "windows")]
             {
                 let output = Command::new("msiexec")

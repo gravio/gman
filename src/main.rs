@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 None => Target::Identifier("master".to_owned()),
             };
 
-            println!("Installing {:#?}@{}", name, target.to_string());
+            println!("Installing {}@{}", name, target.to_string());
 
             let candidate = SearchCandidate::new(
                 name,
