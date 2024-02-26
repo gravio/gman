@@ -53,6 +53,14 @@ pub(crate) struct ClientConfig {
         deserialize_with = "deserialize_log_level"
     )]
     pub log_level: log::LevelFilter,
+
+    /// how large should a packet request to team city be (defaults to 1mb)
+    #[serde(rename = "TeamCityDownloadChunkSize", default = "default_chunk_size")]
+    pub teamcity_download_chunk_size: u64,
+}
+
+pub const fn default_chunk_size() -> u64 {
+    1024 * 1024
 }
 
 fn deserialize_log_level<'de, D>(deserializer: D) -> Result<log::LevelFilter, D::Error>

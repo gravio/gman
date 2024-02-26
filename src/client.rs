@@ -174,6 +174,17 @@ impl Client {
             &search.version_or_identifier_string(),
         );
 
+        /* first uninstall old version */
+        let all_installed = &self.get_installed();
+        let already_installed = all_installed
+            .iter()
+            .find(|x| x.product_name.to_lowercase() == search.product_name.to_lowercase());
+        if let Some(already) = already_installed {
+            eprintln!("Product already installed on machine. Uninstalling before continuing...");
+            already.uninstall()?;
+            eprintln!("Successfully Uninstalled product, continuing with new installation");
+        }
+
         /* Locate the resource (check if in cache, if not, check online) */
         let cached_candidate = self.locate_in_cache(search);
         let actual_candidate = if let Some(p) = cached_candidate {
@@ -234,6 +245,7 @@ impl Client {
                         &found.1,
                         &self.config.temp_download_directory,
                         &self.config.cache_directory,
+                        self.config.teamcity_download_chunk_size,
                     )
                     .await?;
 
@@ -780,6 +792,7 @@ mod tests {
             &with_build_id.1,
             &client.config.temp_download_directory,
             &client.config.cache_directory,
+            client.config.teamcity_download_chunk_size,
         )
         .await
         .expect("Expected downlod not to fail");

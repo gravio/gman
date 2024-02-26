@@ -304,6 +304,7 @@ pub async fn download_artifact<'a>(
     repo: &CandidateRepository,
     temp_dir: &Path,
     cache_dir: &Path,
+    chunk_size: u64,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     log::debug!(
         "Contacting TeamCity for download link on candidate {}",
@@ -400,9 +401,8 @@ pub async fn download_artifact<'a>(
                 .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
                 .progress_chars("#>-"));
 
-        const CHUNK_SIZE: u64 = 1024 * 1024; // 1 mb chunk size
         let mut downloaded: u64 = 0;
-        for range in PartialRangeIter::new(0, length - 1, CHUNK_SIZE)? {
+        for range in PartialRangeIter::new(0, length - 1, chunk_size)? {
             let request: reqwest::Request = match &repo.repository_credentials {
                 Some(credentials) => http_client
                     .get(url.clone())
@@ -426,7 +426,7 @@ pub async fn download_artifact<'a>(
                 tokio::io::copy(&mut item?.as_ref(), &mut output_file_temp).await?;
             }
 
-            downloaded += CHUNK_SIZE;
+            downloaded += chunk_size;
 
             progress_bar.set_position(downloaded);
         }
