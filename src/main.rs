@@ -31,13 +31,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .await
                 .expect("Failed to load candidates");
             let installed_candidates = c.get_installed();
-            for installed in installed_candidates {
+            for installed in &installed_candidates {
                 /* Keep Candidate in list if...
                  *   - not installed at all, or
                  *   - version is higher than installed
                  */
-                if (!show_installed) {
+                if !show_installed {
                     candidates.retain_mut(|cd| !cd.product_equals(&installed))
+                }
+            }
+            /* set the Installed flag */
+            for cd in candidates.iter_mut() {
+                for installed in &installed_candidates {
+                    println!(
+                        "Check {} against {}, version {} against {}",
+                        cd.product_name,
+                        installed.product_name,
+                        cd.make_version_4_parts(),
+                        installed.version,
+                    );
+                    if cd.product_equals(&installed)
+                        && cd.make_version_4_parts() == installed.version
+                    {
+                        cd.installed = true;
+                    }
                 }
             }
             c.format_candidate_table(candidates, true);

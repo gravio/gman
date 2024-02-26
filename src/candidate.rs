@@ -151,10 +151,10 @@ impl InstallationCandidate {
     /// Some version strings, such as with gs/win, are 3-parts, but we often need to reference them by a 4-part scheme
     ///
     /// e.g, 5.2.7033 -> 5.3.7033.0
-    fn make_version_4_parts(&self) -> String {
+    pub fn make_version_4_parts(&self) -> String {
         let mut s = self.version.to_owned();
         let mut count = self.version.split('.').count();
-        while count < 3 {
+        while count < 4 {
             count += 1;
             s.push_str(".0");
         }
