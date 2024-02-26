@@ -7,6 +7,7 @@ mod gman_error;
 mod platform;
 mod product;
 mod team_city;
+use candidate::InstallationCandidate;
 use clap::Parser;
 use cli::Commands;
 use client_config::*;
@@ -38,6 +39,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                  */
                 if !show_installed {
                     candidates.retain_mut(|cd| !cd.product_equals(&installed))
+                } else {
+                    if !candidates.iter().any(|x| {
+                        x.product_equals(installed) && x.make_version_4_parts() == installed.version
+                    }) {
+                        // TODO(nf): the flavor here is a dummy placeholder. This whole "show installed stuff even when not in the list" stuff is very messy
+                        candidates.push(InstallationCandidate {
+                            remote_id: String::default(),
+                            repo_location: String::default(),
+                            product_name: installed.product_name.to_owned(),
+                            version: installed.version.to_owned(),
+                            identifier: "--".to_owned(),
+                            flavor: product::Flavor::empty(),
+                            installed: true,
+                        })
+                    }
                 }
             }
             /* set the Installed flag */
@@ -57,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     }
                 }
             }
-            c.format_candidate_table(candidates, true);
+            c.format_candidate_table(candidates, *show_installed, true);
             exit(0)
         }
         /* Uninstall */
@@ -113,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Some(Commands::Installed) => {
             let c = Client::load().expect("Couldnt load client");
             let candidates = c.get_installed();
-            c.format_candidate_table(candidates, false);
+            c.format_candidate_table(candidates, false, false);
             exit(0)
         }
         None => {

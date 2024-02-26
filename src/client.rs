@@ -444,6 +444,7 @@ impl Client {
         &self,
         candidates: Vec<impl Into<TablePrinter>>,
         show_installed: bool,
+        show_flavor: bool,
     ) {
         log::debug!(
             "Formatting candidate list with {} candidates",
@@ -469,12 +470,16 @@ impl Client {
 
         let mut builder = tabled::builder::Builder::default();
         let header_record = {
-            let mut header: Vec<&str> = vec!["Name", "Version", "Identifier", "Flavor"];
+            let mut header: Vec<&str> = vec!["Name", "Version", "Identifier"];
+            if show_flavor {
+                header.push("Flavor");
+            }
             if show_installed {
                 header.push("Installed");
             }
             header
         };
+        let header_record_count = header_record.len();
         builder.push_record(header_record);
         for item in &data {
             let record = {
@@ -482,9 +487,11 @@ impl Client {
                     item.name.to_owned(),
                     item.version.to_owned(),
                     item.identifier.to_owned(),
-                    item.flavor.to_owned(),
                 ];
-                if (show_installed && item.installed) {
+                if show_flavor {
+                    r.push(item.flavor.to_owned());
+                }
+                if show_installed && item.installed {
                     r.push(item.installed.to_string());
                 }
                 r
@@ -503,7 +510,7 @@ impl Client {
 
         if data.is_empty() {
             table
-                .modify((1, 0), tabled::settings::Span::column(4))
+                .modify((1, 0), tabled::settings::Span::column(header_record_count))
                 .modify((1, 0), Alignment::center());
         }
 

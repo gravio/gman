@@ -16,6 +16,17 @@ pub struct Flavor {
     pub teamcity_executable_path: &'static str,
 }
 
+impl Flavor {
+    pub fn empty() -> Self {
+        Self {
+            platform: Platform::platform_for_current_platform().unwrap(),
+            name: "--",
+            teamcity_id: "--",
+            teamcity_executable_path: "--",
+        }
+    }
+}
+
 impl Product {
     pub fn from_name<'a>(product_name: &'_ str) -> Option<&'a Self> {
         match product_name.to_lowercase().trim() {
