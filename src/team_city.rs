@@ -153,7 +153,7 @@ pub async fn get_builds<'a>(
                         if res_status == 401 || res_status == 403 {
                             eprintln!("Not authorized to access repository {}", &repo.name)
                         } else if res_status == 404 {
-                            eprintln!("Repository endpoint not found for repo {}", &repo.name);
+                            log::warn!("Repository endpoint not found for repo {}", &repo.name);
                         }
                         log::warn!(
                             "Failed to get TeamCity repository information for repo {}",
@@ -225,13 +225,15 @@ pub async fn get_build_id_by_candidate<'a>(
             } else {
                 format!("branch:{}", &candidate.identifier.as_ref().unwrap())
             };
-            url.query_pairs_mut().append_pair(
-                "locator",
-                &format!(
-                    "buildType:{},count:1,{}",
-                    &candidate.flavor.teamcity_id, &filter_for
-                ),
-            );
+            url.query_pairs_mut()
+                .append_key_only("default:false,policy:ALL_BRANCHES")
+                .append_pair(
+                    "locator",
+                    &format!(
+                        "buildType:{},count:1,{},branch(policy:ALL_BRANCHES)",
+                        &candidate.flavor.teamcity_id, &filter_for
+                    ),
+                );
 
             let request: reqwest::Request = match &repo.repository_credentials {
                 Some(credentials) => http_client

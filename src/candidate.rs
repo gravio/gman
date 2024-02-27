@@ -12,7 +12,7 @@ use crate::{
     app,
     gman_error::GravioError,
     platform::Platform,
-    product::{self, Flavor, Product},
+    product::{self, Flavor, PackageType, Product},
 };
 
 #[derive(Tabled)]
@@ -199,82 +199,79 @@ impl InstallationCandidate {
 
     pub fn install(&self, binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         /* Try Gravio Studio */
-        if &self.product_name.to_lowercase() == &product::PRODUCT_GRAVIO_STUDIO.name.to_lowercase()
-        {
-            #[cfg(target_os = "windows")]
-            {
-                log::debug!("Creating a temporary file for this gs/win extraction");
+        #[cfg(target_os = "windows")]
+        if self.flavor.package_type == PackageType::AppX {
+            log::debug!("Creating a temporary file for this appx extraction");
 
-                let tmp_folder = app::get_app_temp_directory().join(self.make_cached_file_name());
-                std::fs::create_dir_all(&tmp_folder)?;
+            let tmp_folder = app::get_app_temp_directory().join(self.make_cached_file_name());
+            std::fs::create_dir_all(&tmp_folder)?;
 
-                let unzip_command = format!(
-                    "Expand-Archive \"{}\" \"{}\" -force",
-                    &binary_path.to_str().unwrap(),
-                    &tmp_folder.to_str().unwrap()
+            let unzip_command = format!(
+                "Expand-Archive \"{}\" \"{}\" -force",
+                &binary_path.to_str().unwrap(),
+                &tmp_folder.to_str().unwrap()
+            );
+            /* extract zip to temporary directory */
+            log::debug!("Sending extract-archive request to powershell");
+            let unzip_output = Command::new("powershell")
+                .arg("-Command")
+                .arg(unzip_command)
+                .output()?;
+
+            if !unzip_output.status.success() {
+                // Convert the output bytes to a string
+                log::debug!(
+                    "Failed to extract appx zip items: {}",
+                    unzip_output.status.code().unwrap()
                 );
-                /* extract zip to temporary directory */
-                log::debug!("Sending extract-archive request to powershell");
-                let unzip_output = Command::new("powershell")
-                    .arg("-Command")
-                    .arg(unzip_command)
-                    .output()?;
+                return Err(Box::new(GravioError::new(&format!(
+                    "Failed to install {}, couldn't extract to temp directory",
+                    self.product_name
+                ))));
+            }
 
-                if !unzip_output.status.success() {
-                    // Convert the output bytes to a string
-                    log::debug!(
-                        "Failed to extract gs/win zip items: {}",
-                        unzip_output.status.code().unwrap()
-                    );
-                    return Err(Box::new(GravioError::new(
-                        "Failed to install Gravio Studio, couldn't extract to temp directory",
-                    )));
-                }
+            /* run the  Install.ps1 */
+            match std::fs::read_dir(tmp_folder) {
+                Ok(list_dir) => {
+                    for entry_result in list_dir {
+                        if let Ok(entry) = entry_result {
+                            if entry.metadata().unwrap().is_dir() {
+                                let install_script_loc = entry.path().join("Install.ps1");
+                                if Path::exists(&install_script_loc) {
+                                    log::debug!("found {} install.ps1 file", self.product_name);
+                                    let install_output = Command::new("powershell")
+                                        .arg("-Command")
+                                        .arg(install_script_loc.to_str().unwrap())
+                                        .output()?;
 
-                /* run the  Install.ps1 */
-                match std::fs::read_dir(tmp_folder) {
-                    Ok(list_dir) => {
-                        for entry_result in list_dir {
-                            if let Ok(entry) = entry_result {
-                                if entry.metadata().unwrap().is_dir() {
-                                    let install_script_loc = entry.path().join("Install.ps1");
-                                    if Path::exists(&install_script_loc) {
-                                        log::debug!("found gs/win install.ps1 file");
-                                        let install_output = Command::new("powershell")
-                                            .arg("-Command")
-                                            .arg(install_script_loc.to_str().unwrap())
-                                            .output()?;
-
-                                        if !install_output.status.success() {
-                                            // Convert the output bytes to a string
-                                            log::debug!(
-                                                "Failed to install gs/win: {}",
-                                                install_output.status.code().unwrap()
-                                            );
-                                            return Err(Box::new(GravioError::new(
-                                                    "Failed to install Gravio Studio, couldn't run install script successfully",
+                                    if !install_output.status.success() {
+                                        // Convert the output bytes to a string
+                                        log::debug!(
+                                            "Failed to install {}: {}",
+                                            self.product_name,
+                                            install_output.status.code().unwrap()
+                                        );
+                                        return Err(Box::new(GravioError::new(
+                                                    &format!("Failed to install {}, couldn't run install script successfully", self.product_name),
                                                 )));
-                                        }
-                                        return Ok(());
                                     }
-                                    break;
+                                    return Ok(());
                                 }
+                                break;
                             }
                         }
                     }
-                    Err(_) => {
-                        log::error!("Failed to read temporary extracted directory");
-                        return Err(Box::new(GravioError::new(
-                            "Failed to read temporary extracted directory",
-                        )));
-                    }
+                }
+                Err(_) => {
+                    log::error!("Failed to read temporary extracted directory");
+                    return Err(Box::new(GravioError::new(
+                        "Failed to read temporary extracted directory",
+                    )));
                 }
             }
         }
         /* Try HubKit */
-        else if &self.product_name.to_lowercase()
-            == &product::PRODUCT_GRAVIO_HUBKIT.name.to_lowercase()
-        {
+        else if self.flavor.package_type == PackageType::Msi {
             #[cfg(target_os = "windows")]
             {
                 let output = Command::new("msiexec")
@@ -284,7 +281,7 @@ impl InstallationCandidate {
                 // Check if the command was successful
                 if output.status.success() {
                     // Convert the output bytes to a string
-                    log::debug!("Successfully installed HubKit");
+                    log::debug!("Successfully installed {}", self.product_name);
                     return Ok(());
                 }
                 if output.status.code().unwrap_or_default() == 1602 {

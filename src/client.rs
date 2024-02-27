@@ -108,6 +108,7 @@ impl Client {
         let products: Vec<&product::Product> = vec![
             &*product::PRODUCT_GRAVIO_HUBKIT,
             &*product::PRODUCT_GRAVIO_STUDIO,
+            &*product::PRODUCT_HANDBOOK_X,
         ];
 
         let mut builds = get_builds(
@@ -521,18 +522,15 @@ impl Client {
 #[cfg(test)]
 mod tests {
 
+    use hyper::Version;
+
     use crate::{
-        candidate::SearchCandidate,
-        cli::Target,
-        download_artifact, get_build_id_by_candidate,
-        product::{self},
-        Client, TeamCityArtifacts, TeamCityBranch, TeamCityBuild, TeamCityBuilds,
+        app, candidate::SearchCandidate, cli::Target, download_artifact, get_build_id_by_candidate,
+        product, Client, TeamCityArtifacts, TeamCityBranch, TeamCityBuild, TeamCityBuilds,
     };
 
     #[tokio::test]
     async fn candidates() {
-        simple_logger::SimpleLogger::new().env().init().unwrap();
-
         let c = Client::load().expect("Failed to load client");
         let candidates = c.list_candidates(None, None).await.unwrap();
         assert!(!candidates.is_empty());
@@ -541,8 +539,6 @@ mod tests {
 
     #[tokio::test]
     async fn get_build_id() {
-        simple_logger::SimpleLogger::new().env().init().unwrap();
-
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
         let candidate =
             SearchCandidate::new(p.name, Some("5.2.0-7015"), None, Some("WindowsHubkit")).unwrap();
@@ -570,8 +566,6 @@ mod tests {
 
     #[tokio::test]
     async fn get_build_id_by_identifier_name() {
-        simple_logger::SimpleLogger::new().env().init().unwrap();
-
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
         let candidate = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
 
@@ -597,9 +591,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_build_id_by_no_results() {
-        simple_logger::SimpleLogger::new().env().init().unwrap();
+    async fn get_build_id_by_version() {
+        let p = &product::PRODUCT_HANDBOOK_X;
+        let candidate =
+            SearchCandidate::new(p.name, Some("1.0.1656.0"), None, Some("Windows")).unwrap();
 
+        let c = Client::load().expect("Failed to load client");
+
+        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
+
+        let vv = c.get_valid_repositories_for_platform();
+
+        match get_build_id_by_candidate(&http_client, &candidate, &vv).await {
+            Ok(s) => match s {
+                None => {
+                    assert!(false, "Expected results, but got empty")
+                }
+                Some(ss) => {
+                    assert!(!ss.0.remote_id.is_empty(), "expected a valid candidate with a remote id, got a candidate with nothing filled in")
+                }
+            },
+            Err(_) => {
+                assert!(false, "Expected a valid candidate with a remote id from build server, got no results instead");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn get_build_id_by_no_results() {
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
         let candidate = SearchCandidate::new(
             p.name,
@@ -802,8 +821,6 @@ mod tests {
 
     #[tokio::test]
     async fn download_develop_hubkit() {
-        simple_logger::SimpleLogger::new().env().init().unwrap();
-
         let client = Client::load().expect("Failed to load client");
         let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
         let vv = client.get_valid_repositories_for_platform();

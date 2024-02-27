@@ -59,13 +59,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             /* set the Installed flag */
             for cd in candidates.iter_mut() {
                 for installed in &installed_candidates {
-                    println!(
-                        "Check {} against {}, version {} against {}",
-                        cd.product_name,
-                        installed.product_name,
-                        cd.make_version_4_parts(),
-                        installed.version,
-                    );
                     if cd.product_equals(&installed)
                         && cd.make_version_4_parts() == installed.version
                     {
