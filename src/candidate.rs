@@ -1,3 +1,5 @@
+use serde::{Deserialize, Deserializer};
+use serde_json::Value;
 use std::{
     env,
     path::{Path, PathBuf},
@@ -245,7 +247,6 @@ impl InstallationCandidate {
                                         .output()?;
 
                                     if !install_output.status.success() {
-                                        // Convert the output bytes to a string
                                         log::debug!(
                                             "Failed to install {}: {}",
                                             self.product_name,
@@ -272,8 +273,7 @@ impl InstallationCandidate {
         }
         /* Try misx */
         else if self.flavor.package_type == PackageType::MsiX {
-            let install_command =
-                format!("Install-AppxPackage \"{}\"", binary_path.to_str().unwrap());
+            let install_command = format!("Add-AppxPackage \"{}\"", binary_path.to_str().unwrap());
             let install_output = Command::new("powershell")
                 .arg("-Command")
                 .arg(install_command)
@@ -372,54 +372,78 @@ pub struct InstalledProduct {
     pub version: String,
 
     pub package_name: String,
+
+    pub package_type: PackageType,
+}
+
+impl From<InstalledAppXProduct> for InstalledProduct {
+    fn from(value: InstalledAppXProduct) -> Self {
+        InstalledProduct {
+            product_name: value.name.split('.').last().unwrap().to_owned(),
+            version: value.version,
+            package_name: value.package_full_name,
+            package_type: PackageType::AppX,
+        }
+    }
 }
 
 impl InstalledProduct {
     pub fn uninstall(&self) -> Result<(), Box<dyn std::error::Error>> {
-        /* Try Gravio Studio (win) */
-        if &self.product_name == &product::PRODUCT_GRAVIO_STUDIO.name {
-            #[cfg(target_os = "windows")]
-            {
-                let command = format!("Remove-AppxPackage {}", self.package_name);
-                let output = Command::new("powershell")
-                    .arg("-Command")
-                    .arg(command)
-                    .output()?;
+        #[cfg(target_os = "windows")]
+        if self.package_type == PackageType::AppX {
+            let command = format!("Remove-AppxPackage {}", self.package_name);
+            let output = Command::new("powershell")
+                .arg("-Command")
+                .arg(command)
+                .output()?;
 
-                // Check if the command was successful
-                if output.status.success() {
-                    // Convert the output bytes to a string
-                    log::debug!("Successfully uninstalled gs/win");
-                    return Ok(());
-                }
-                eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(GManError::new(
-                    "Failed to get installations: Studio",
-                )));
+            // Check if the command was successful
+            if output.status.success() {
+                // Convert the output bytes to a string
+                log::debug!("Successfully uninstalled {}", self.product_name);
+                return Ok(());
             }
-        }
-        /* Try HubKit */
-        if &self.product_name == &product::PRODUCT_GRAVIO_HUBKIT.name {
-            #[cfg(target_os = "windows")]
-            {
-                let output = Command::new("msiexec")
-                    .args(["/x", self.package_name.as_str()])
-                    .output()?;
+            eprintln!("PowerShell command failed:\n{:?}", output.status);
+            return Err(Box::new(GManError::new(&format!(
+                "Failed to get installations: {}",
+                self.product_name
+            ))));
+        } else if self.package_type == PackageType::Msi {
+            let output = Command::new("msiexec")
+                .args(["/x", self.package_name.as_str()])
+                .output()?;
 
-                // Check if the command was successful
-                if output.status.success() {
-                    // Convert the output bytes to a string
-                    log::debug!("Successfully uninstalled HubKit");
-                    return Ok(());
-                }
-                eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(GManError::new(
-                    "Failed to get installations: Studio",
-                )));
+            // Check if the command was successful
+            if output.status.success() {
+                // Convert the output bytes to a string
+                log::debug!("Successfully uninstalled {}", self.product_name);
+                return Ok(());
             }
+            eprintln!("PowerShell command failed:\n{:?}", output.status);
+            return Err(Box::new(GManError::new(&format!(
+                "Failed to get installations: {}",
+                self.product_name
+            ))));
         }
+
+        #[cfg(target_os = "maos")]
+        {}
+
+        #[cfg(target_os = "linux")]
+        {}
         Ok(())
     }
+}
+
+#[cfg(windows)]
+#[derive(Deserialize)]
+pub struct InstalledAppXProduct {
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "Version")]
+    pub version: String,
+    #[serde(rename = "PackageFullName")]
+    pub package_full_name: String,
 }
 
 #[cfg(test)]

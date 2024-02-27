@@ -3,7 +3,9 @@ use std::str::FromStr as _;
 
 use std::{fs::File, io::BufReader, process::Command};
 
-use crate::candidate::{InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter};
+use crate::candidate::{
+    InstallationCandidate, InstalledAppXProduct, InstalledProduct, SearchCandidate, TablePrinter,
+};
 use crate::gman_error::GManError;
 use crate::platform::Platform;
 use crate::{
@@ -349,9 +351,27 @@ impl Client {
 
     fn get_installed_windows(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
         let mut installed: Vec<InstalledProduct> = Vec::new();
-        /* get Gravio Studio */
+
+        let publisher_where = self
+            .config
+            .publisher_identities
+            .iter()
+            .filter(|x| x.platforms.contains(&Platform::Windows))
+            .map(|x| format!("$_.Publisher -eq \"{}\"", x.id))
+            .collect::<Vec<String>>()
+            .join(" -or ");
+
+        if publisher_where.is_empty() {
+            log::warn!("No publishers specified, therefore cant get any Windows installed application information");
+            return Ok(installed);
+        }
+
+        /* get Appx Packages */
         {
-            let command = r#"Get-AppxPackage | Where-Object {$_.Name -match ".*GravioStudio.*" } | Select Name, Version, PackageFullName"#;
+            let command = format!(
+                "Get-AppxPackage | Where-Object {{{}}} | Select Name, Version, PackageFullName | ConvertTo-Json -Compress",
+                publisher_where
+            );
             let output = Command::new("powershell")
                 .arg("-Command")
                 .arg(command)
@@ -360,21 +380,17 @@ impl Client {
             // Check if the command was successful
             if output.status.success() {
                 // Convert the output bytes to a string
-                let result = String::from_utf8_lossy(&output.stdout);
-
-                let studio_splits = result.split("\r\n").skip(3).next().map(|s| s.split(" "));
-                if let Some(text) = studio_splits {
-                    let vec: Vec<&str> = text.collect();
-                    let version = vec[1].trim().to_owned();
-                    let package_full_name = vec[2].trim().to_owned();
-
-                    let installed_product: InstalledProduct = InstalledProduct {
-                        product_name: product::PRODUCT_GRAVIO_STUDIO.name.to_owned(),
-                        version,
-                        package_name: package_full_name,
-                    };
-
-                    installed.push(installed_product);
+                let mut result = String::from_utf8_lossy(&output.stdout)
+                    .to_owned()
+                    .trim()
+                    .to_string();
+                if !(result.starts_with('[') && result.ends_with(']')) {
+                    result.insert(0, '[');
+                    result.push(']');
+                };
+                let v: Vec<InstalledAppXProduct> = serde_json::from_str(&result)?;
+                for appx in v {
+                    installed.push(appx.into());
                 }
             } else {
                 // Print the error message if the command failed
@@ -384,8 +400,6 @@ impl Client {
                 )));
             }
         }
-
-        /* get Handbookx */
 
         /* get HubKit */
         {
@@ -417,6 +431,7 @@ impl Client {
                         product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
                         version: version.to_owned(),
                         package_name: identifier.to_owned(),
+                        package_type: product::PackageType::Msi,
                     };
 
                     installed.push(installed_product);
@@ -537,6 +552,13 @@ mod tests {
         let candidates = c.list_candidates(None, None).await.unwrap();
         assert!(!candidates.is_empty());
         println!("lmao");
+    }
+
+    #[test]
+    fn test_get_installed() {
+        let c = Client::load().expect("Failed to load client");
+        let installed = c.get_installed();
+        assert!(!installed.is_empty())
     }
 
     #[tokio::test]

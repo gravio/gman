@@ -6,18 +6,44 @@ use serde::Deserialize;
 use crate::{app, platform::Platform};
 
 #[derive(Deserialize, Debug)]
-pub(crate) struct CandidateRepository {
-    #[serde(rename(deserialize = "Name"))]
+pub(crate) struct PublisherIdentity {
+    /// Display name of this Publisher
+    #[serde(rename = "Name")]
     pub name: String,
-    #[serde(rename(deserialize = "RepositoryType"))]
-    pub repository_type: String,
-    #[serde(rename(deserialize = "Platforms"))]
+    /// byte for byte key of this publisher
+    #[serde(rename = "Id")]
+    pub id: String,
+    /// platforms this publisher is used for
+    #[serde(rename = "Platforms")]
     pub platforms: Vec<Platform>,
-    #[serde(rename(deserialize = "RepositoryFolder"))]
+    /// Which product tags this publisher is valid for
+    #[serde(rename = "Products")]
+    pub products: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct CandidateRepository {
+    /// Display name of this repository
+    #[serde(rename = "Name")]
+    pub name: String,
+    /// Repository type, such as TeamCity
+    #[serde(rename = "RepositoryType")]
+    pub repository_type: String,
+
+    /// What type of Platform binaries can be found on this repository
+    #[serde(rename = "Platforms")]
+    pub platforms: Vec<Platform>,
+
+    /// Defines this repository of a local folder
+    #[serde(rename = "RepositoryFolder")]
     pub repository_folder: Option<String>,
-    #[serde(rename(deserialize = "RepositoryServer"))]
+
+    /// Defines this repository as a remote server
+    #[serde(rename = "RepositoryServer")]
     pub repository_server: Option<String>,
-    #[serde(rename(deserialize = "RepositoryCredentials"))]
+
+    /// API Credentials for this repository
+    #[serde(rename = "RepositoryCredentials")]
     pub repository_credentials: Option<String>,
 }
 #[derive(Deserialize, Debug)]
@@ -49,6 +75,7 @@ pub(crate) struct ClientConfig {
     )]
     pub cache_directory: PathBuf,
 
+    /// Log level to display when running this application, defaults to OFF
     #[serde(
         rename = "LogLevel",
         default = "default_log_level",
@@ -59,6 +86,14 @@ pub(crate) struct ClientConfig {
     /// how large should a packet request to team city be (defaults to 1mb)
     #[serde(rename = "TeamCityDownloadChunkSize", default = "default_chunk_size")]
     pub teamcity_download_chunk_size: u64,
+
+    /// Publisher keys to be aware of when searching for uninstallation material on the local machine
+    #[serde(rename = "PublisherIdentities", default = "default_empty_publisher")]
+    pub publisher_identities: Vec<PublisherIdentity>,
+}
+
+pub const fn default_empty_publisher() -> Vec<PublisherIdentity> {
+    Vec::new()
 }
 
 pub const fn default_chunk_size() -> u64 {
