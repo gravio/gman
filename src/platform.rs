@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::gman_error::GravioError;
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub(crate) enum Platform {
     Android,
     IOS,
@@ -14,17 +14,40 @@ pub(crate) enum Platform {
     Linux,
 }
 
+impl<'de> Deserialize<'de> for Platform {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
+
+        match value {
+            serde_json::Value::String(val) => {
+                let result = Platform::from_str(&val).map_err(|x| {
+                    serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Str(&val),
+                        &"one of {windows, macos, rpi, linux, android, ios}",
+                    )
+                })?;
+                Ok(result)
+            }
+            _ => Err(serde::de::Error::custom("Expected string for 'Platform'")),
+        }
+    }
+}
+
 impl FromStr for Platform {
     type Err = GravioError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Android" => Ok(Self::Android),
-            "iOS" => Ok(Self::IOS),
-            "Windows" => Ok(Self::Windows),
-            "macOS" => Ok(Self::Mac),
+        let s = s.to_lowercase();
+        match s.as_str() {
+            "android" => Ok(Self::Android),
+            "ios" => Ok(Self::IOS),
+            "windows" => Ok(Self::Windows),
+            "macos" => Ok(Self::Mac),
             "rpi" => Ok(Self::RaspberryPi),
-            "Linux" => Ok(Self::Linux),
+            "linux" => Ok(Self::Linux),
             _ => Err(GravioError::new("Not a valid Platform string")),
         }
     }
