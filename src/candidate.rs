@@ -2,6 +2,8 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::{
     env,
+    fmt::Display,
+    ops::Deref,
     path::{Path, PathBuf},
     process::Command,
     str::FromStr,
@@ -70,7 +72,7 @@ impl From<&InstalledProduct> for TablePrinter {
 pub struct SearchCandidate {
     pub product_name: String,
 
-    pub version: Option<String>,
+    pub version: Option<Version>,
 
     pub identifier: Option<String>,
 
@@ -115,7 +117,7 @@ impl SearchCandidate {
 
         Some(SearchCandidate {
             product_name: product_name.to_owned(),
-            version: version.map(|x| x.to_owned()),
+            version: version.map(|x| Version(x.to_owned())),
             identifier: identifier.map(|x| x.to_owned()),
             flavor: flavor_str.unwrap().to_owned(),
         })
@@ -123,7 +125,7 @@ impl SearchCandidate {
 
     pub fn version_or_identifier_string(&self) -> &str {
         if let Some(v) = &self.version {
-            v.as_str()
+            &v
         } else if let Some(i) = &self.identifier {
             i.as_str()
         } else {
@@ -132,7 +134,27 @@ impl SearchCandidate {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Version(String);
+impl Deref for Version {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for Version {
+    fn as_ref(&self) -> &str {
+        &self.0.as_ref()
+    }
+}
 
 #[derive(Debug)]
 pub struct InstallationCandidate {

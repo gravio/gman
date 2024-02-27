@@ -16,7 +16,7 @@ use serde_json::Value;
 
 use crate::{
     app,
-    candidate::{InstallationCandidate, SearchCandidate},
+    candidate::{InstallationCandidate, SearchCandidate, Version},
     gman_error::GManError,
     platform::Platform,
     product::Product,
@@ -226,7 +226,12 @@ pub async fn get_with_build_id_by_candidate<'a>(
             let mut url = ensure_scheme(&repo_url)?;
             url.set_path("app/rest/builds");
             let filter_for = if candidate.version.is_some() {
-                format!("number:{}", &candidate.version.as_ref().unwrap())
+                format!(
+                    "number:{}",
+                    &<std::option::Option<Version> as Clone>::clone(&candidate.version)
+                        .unwrap()
+                        .as_ref()
+                )
             } else {
                 format!("branch:{}", &candidate.identifier.as_ref().unwrap())
             };
