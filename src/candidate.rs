@@ -1,3 +1,4 @@
+use regex::Regex;
 use serde::Deserialize;
 use std::{
     fmt::Display,
@@ -15,6 +16,7 @@ use crate::{
     platform::Platform,
     product::{self, Flavor, PackageType, Product},
 };
+use lazy_static::lazy_static;
 
 #[derive(Tabled)]
 pub struct TablePrinter {
@@ -158,6 +160,46 @@ impl PartialEq for Version {
 
 impl Eq for Version {}
 
+lazy_static! {
+    static ref VERSION_REGEX: Regex =
+        Regex::new(r#"^(\d{1,})(?:[.-](\d{1,}))?(?:[.-](\d{1,}))?(?:[.-](\d{1,}))?$"#)
+            .expect("Failed to create regex");
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let caps_self: Vec<&str> = match VERSION_REGEX.captures(&self.0) {
+            Some(c) => c,
+            None => return None,
+        }
+        .iter()
+        .skip(1)
+        .filter_map(|m| m.map(|m| m.as_str()))
+        .collect();
+
+        let caps_other: Vec<&str> = match VERSION_REGEX.captures(&other.0) {
+            Some(c) => c,
+            None => return None,
+        }
+        .iter()
+        .skip(1)
+        .filter_map(|m| m.map(|m| m.as_str()))
+        .collect();
+
+        for zipped in caps_self.iter().zip(caps_other.iter()) {
+            let z0 = u32::from_str(zipped.0).unwrap();
+            let z1 = u32::from_str(zipped.1).unwrap();
+
+            let cmp = z0.cmp(&z1);
+            if cmp != std::cmp::Ordering::Equal {
+                return Some(cmp);
+            }
+        }
+
+        Some(std::cmp::Ordering::Equal)
+    }
+}
+
 impl Deref for Version {
     type Target = str;
 
@@ -202,19 +244,6 @@ pub struct InstallationCandidate {
 }
 
 impl InstallationCandidate {
-    // pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {}
-    /// Some version strings, such as with gs/win, are 3-parts, but we often need to reference them by a 4-part scheme
-    ///
-    /// e.g, 5.2.7033 -> 5.3.7033.0
-    pub fn make_version_4_parts(&self) -> String {
-        let mut s = self.version.0.to_owned();
-        let mut count = self.version.split('.').count();
-        while count < 4 {
-            count += 1;
-            s.push_str(".0");
-        }
-        s
-    }
     pub fn product_equals(&self, installed_product: &InstalledProduct) -> bool {
         &installed_product.product_name == &self.product_name
     }
@@ -526,5 +555,74 @@ mod tests {
             fname,
             "HubKit@Windows@WindowsHubkit@develop@5.2.3-7023@GravioHubKit.msi"
         );
+    }
+
+    #[test]
+    fn test_version_cmp_greater_full() {
+        let v0 = Version::new("5.2.0.2222");
+        let v1 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Greater);
+
+        let v0 = Version::new("5.2.1.0001");
+        let v1 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Greater);
+
+        let v0 = Version::new("5.3.0.0001");
+        let v1 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Greater);
+
+        let v0 = Version::new("6.2.0.2222");
+        let v1 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Greater);
+
+        let v0 = Version::new("6.2.0.2222");
+        let v1 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Greater);
+    }
+
+    #[test]
+    fn test_version_cmp_greater_half() {
+        let v0 = Version::new("5.2.3");
+        let v1 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Greater);
+    }
+
+    #[test]
+    fn test_version_cmp_less_full() {
+        let v1 = Version::new("5.2.0.2222");
+        let v0 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Less);
+
+        let v1 = Version::new("5.2.1.0001");
+        let v0 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Less);
+
+        let v1 = Version::new("5.3.0.0001");
+        let v0 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Less);
+
+        let v1 = Version::new("6.2.0.2222");
+        let v0 = Version::new("5.2.0.0001");
+
+        let o = v0.partial_cmp(&v1);
+        assert_eq!(o.unwrap(), std::cmp::Ordering::Less);
     }
 }
