@@ -132,6 +132,8 @@ impl SearchCandidate {
     }
 }
 
+pub struct Version(String);
+
 #[derive(Debug)]
 pub struct InstallationCandidate {
     pub remote_id: String,
@@ -150,6 +152,7 @@ pub struct InstallationCandidate {
 }
 
 impl InstallationCandidate {
+    // pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {}
     /// Some version strings, such as with gs/win, are 3-parts, but we often need to reference them by a 4-part scheme
     ///
     /// e.g, 5.2.7033 -> 5.3.7033.0

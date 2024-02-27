@@ -9,16 +9,21 @@ use crate::candidate::{
 use crate::gman_error::GManError;
 use crate::platform::Platform;
 use crate::{
-    app, download_artifact, get_build_id_by_candidate, get_builds, product, CandidateRepository,
-    ClientConfig,
+    app, download_artifact, get_builds, get_with_build_id_by_candidate, product,
+    CandidateRepository, ClientConfig,
 };
 
 use tabled::settings::{object::Rows, Alignment, Modify, Style};
 
 pub struct Client {
     pub config: ClientConfig,
+    http_client: reqwest::Client,
 }
 impl Client {
+    // fn f() {
+    //     let valid_repositories = self.get_valid_repositories_for_platform();
+    //     let result = get_build_id_by_candidate(&http_client, search, &valid_repositories).await?;
+    // }
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let client_config = Client::load_config()?;
         app::init_logging();
@@ -32,7 +37,10 @@ impl Client {
     }
     pub fn new(config: ClientConfig) -> Self {
         log::debug!("Instantiating new gman client");
-        Self { config }
+        Self {
+            config,
+            http_client: reqwest::Client::builder().build().unwrap(),
+        }
     }
 
     /// Loads the config file, if any, from the 'gman.config' next to the gman executable
@@ -95,7 +103,6 @@ impl Client {
         log::debug!("{:#?}", self.config);
 
         let mut candidates: Vec<InstallationCandidate> = Vec::new();
-        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
 
         let current_platform = Platform::platform_for_current_platform();
         if current_platform.is_none() {
@@ -114,7 +121,7 @@ impl Client {
         ];
 
         let mut builds = get_builds(
-            &http_client,
+            &self.http_client,
             current_platform,
             &valid_repositories,
             &products,
@@ -166,6 +173,35 @@ impl Client {
         }
     }
 
+    async fn download(
+        &self,
+        search: &SearchCandidate,
+    ) -> Result<Option<InstallationCandidate>, Box<dyn std::error::Error>> {
+        let valid_repositories = self.get_valid_repositories_for_platform();
+        let result =
+            get_with_build_id_by_candidate(&self.http_client, search, &valid_repositories).await?;
+
+        match result {
+            Some(found) => {
+                let _ = download_artifact(
+                    &self.http_client,
+                    &found.0,
+                    &found.1,
+                    &self.config.temp_download_directory,
+                    &self.config.cache_directory,
+                    self.config.teamcity_download_chunk_size,
+                )
+                .await?;
+
+                Ok(Some(found.0))
+            }
+            None => {
+                println!("No candidates found");
+                return Ok(None);
+            }
+        }
+    }
+
     pub async fn install(
         &self,
         search: &SearchCandidate,
@@ -190,73 +226,87 @@ impl Client {
 
         /* Locate the resource (check if in cache, if not, check online) */
         let cached_candidate = self.locate_in_cache(search);
-        let actual_candidate = if let Some(p) = cached_candidate {
-            log::debug!(
-                "Found installation executable for {}@{} in path",
-                &search.product_name,
-                &search.version_or_identifier_string()
-            );
+        let mut should_download = false;
 
-            if let None = search.version {
-                if automatic_upgrade.is_none() {
-                    /* version unspecified, prompt user to optionally fetch latest from build server */
-                    println!("A candidate for installation has been found in the local cache, but since the version was unspecified it may be oudated. Would you like to check the remote repositories for updated versions? [y/N]");
-                    println!("{:#?}", &p);
-                    let mut buffer = String::new();
-                    std::io::stdin().read_line(&mut buffer)?;
-                    if Self::is_console_confirm(&buffer) {
-                        println!("Will search for more recent versions, and will use this cached item as fallback");
-                        todo!()
-                    } else {
-                        println!("Will not search for more recent versions, will install this cached item");
-                        todo!()
+        let actual_candidate = match cached_candidate {
+            Some(cached) => {
+                log::debug!(
+                    "Found installation executable for {}@{} in path",
+                    &search.product_name,
+                    &search.version_or_identifier_string()
+                );
+
+                if let None = search.version {
+                    match automatic_upgrade {
+                        Some(should_upgrade) => match should_upgrade {
+                            false => {
+                                println!("A candidate for installation has been found in the local cache. Because version information wasnt specified, it may be outdated, but automatic upgrade was false. Will install local cache version.");
+                                cached
+                            }
+                            true => {
+                                println!("A candidate for installation has been found in the local cache. Automatic upgrade is true, will attempt to find later version on build server and will use this cached item as fallback");
+                                should_download = true;
+
+                                let valid_repositories = self.get_valid_repositories_for_platform();
+
+                                match get_with_build_id_by_candidate(
+                                    &self.http_client,
+                                    search,
+                                    &valid_repositories,
+                                )
+                                .await
+                                {
+                                    Ok(res) => {
+                                        match res {
+                                            Some(found_on_server) => {
+                                                // if found_on_server.0.version
+                                                todo!();
+                                                cached
+                                            }
+                                            None => {
+                                                log::info!("Repo returned correctly, but build id was not found on server. Will install from cache.");
+                                                cached
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::error!("Encountered an error when contacting repository for up to date information. Installing from cache: {}", e);
+                                        eprintln!("Encountered an error when contacting repository for up to date information. Will install the cached version");
+                                        cached
+                                    }
+                                }
+                            }
+                        },
+                        None => {
+                            /* version unspecified, prompt user to optionally fetch latest from build server */
+                            println!("A candidate for installation has been found in the local cache, but since the version was unspecified it may be oudated. Would you like to check the remote repositories for updated versions? [y/N]");
+                            println!("{:#?}", &cached);
+                            let mut buffer = String::new();
+                            std::io::stdin().read_line(&mut buffer)?;
+                            if Self::is_console_confirm(&buffer) {
+                                println!("Will search for more recent versions, and will use this cached item as fallback");
+                                todo!()
+                            } else {
+                                println!("Will not search for more recent versions, will install this cached item");
+                                cached
+                            }
+                        }
                     }
-                } else if automatic_upgrade.is_some() {
-                    match automatic_upgrade.unwrap() {
-                        false => {
-                            println!("A candidate for installation has been found in the local cache. Because version information wasnt specified, it may be outdated, but automatic upgrade was false. Will install local cache version.");
-                            todo!();
-                        }
-                        true => {
-                            println!("A candidate for installation has been found in the local cache. Automatic upgrade is true, will attempt to find later version on build server and will use this cached item as fallback");
-                            todo!()
-                        }
-                    };
+                } else {
+                    cached
                 }
             }
-            p
-        } else {
-            /* Download the resource (to cache) */
-            log::debug!(
+            None => {
+                /* Download the resource (to cache) */
+                log::debug!(
                 "Installation executable for {}@{} not found in cache, attempting to download from repository",
                 &search.product_name,
                 &search.version_or_identifier_string()
             );
 
-            let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
-
-            let valid_repositories = self.get_valid_repositories_for_platform();
-
-            let result =
-                get_build_id_by_candidate(&http_client, search, &valid_repositories).await?;
-
-            match result {
-                Some(found) => {
-                    let _ = download_artifact(
-                        &http_client,
-                        &found.0,
-                        &found.1,
-                        &self.config.temp_download_directory,
-                        &self.config.cache_directory,
-                        self.config.teamcity_download_chunk_size,
-                    )
-                    .await?;
-
-                    found.0
-                }
-                None => {
-                    println!("No candidates found");
-                    return Ok(());
+                match self.download(search).await? {
+                    Some(found) => found,
+                    None => return Ok(()),
                 }
             }
         };
@@ -561,12 +611,13 @@ mod tests {
     use hyper::Version;
 
     use crate::{
-        app, candidate::SearchCandidate, cli::Target, download_artifact, get_build_id_by_candidate,
-        product, Client, TeamCityArtifacts, TeamCityBranch, TeamCityBuild, TeamCityBuilds,
+        app, candidate::SearchCandidate, cli::Target, download_artifact,
+        get_with_build_id_by_candidate, product, Client, TeamCityArtifacts, TeamCityBranch,
+        TeamCityBuild, TeamCityBuilds,
     };
 
     #[tokio::test]
-    async fn candidates() {
+    async fn tets_candidates() {
         let c = Client::load().expect("Failed to load client");
         let candidates = c.list_candidates(None, None).await.unwrap();
         assert!(!candidates.is_empty());
@@ -581,18 +632,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_build_id() {
+    async fn test_get_build_id_specific_version() {
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
         let candidate =
             SearchCandidate::new(p.name, Some("5.2.0-7015"), None, Some("WindowsHubkit")).unwrap();
 
         let c = Client::load().expect("Failed to load client");
 
-        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
-
         let vv = c.get_valid_repositories_for_platform();
 
-        match get_build_id_by_candidate(&http_client, &candidate, &vv).await {
+        match get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -614,11 +663,9 @@ mod tests {
 
         let c = Client::load().expect("Failed to load client");
 
-        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
-
         let vv = c.get_valid_repositories_for_platform();
 
-        match get_build_id_by_candidate(&http_client, &candidate, &vv).await {
+        match get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -641,11 +688,9 @@ mod tests {
 
         let c = Client::load().expect("Failed to load client");
 
-        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
-
         let vv = c.get_valid_repositories_for_platform();
 
-        match get_build_id_by_candidate(&http_client, &candidate, &vv).await {
+        match get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -673,11 +718,9 @@ mod tests {
 
         let c = Client::load().expect("Failed to load client");
 
-        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
-
         let vv = c.get_valid_repositories_for_platform();
 
-        match get_build_id_by_candidate(&http_client, &candidate, &vv).await {
+        match get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
             Ok(s) => {
                 assert!(
                     s.is_none(),
@@ -889,19 +932,18 @@ mod tests {
     #[tokio::test]
     async fn download_develop_hubkit() {
         let client = Client::load().expect("Failed to load client");
-        let http_client: reqwest::Client = reqwest::Client::builder().build().unwrap();
         let vv = client.get_valid_repositories_for_platform();
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
 
         let c = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
 
-        let with_build_id = get_build_id_by_candidate(&http_client, &c, &vv)
+        let with_build_id = get_with_build_id_by_candidate(&client.http_client, &c, &vv)
             .await
             .expect("expected to get build id during test for develop hubkit install")
             .expect("Expected build id to exist");
 
         let _ = download_artifact(
-            &http_client,
+            &client.http_client,
             &with_build_id.0,
             &with_build_id.1,
             &client.config.temp_download_directory,

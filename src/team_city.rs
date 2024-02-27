@@ -205,7 +205,7 @@ pub async fn get_builds<'a>(
 }
 
 /// Queries TeamCity repositories for the actual internal id of the build given by the [Candidate]
-pub async fn get_build_id_by_candidate<'a>(
+pub async fn get_with_build_id_by_candidate<'a>(
     http_client: &reqwest::Client,
     candidate: &SearchCandidate,
     valid_repositories: &[&'a CandidateRepository],
