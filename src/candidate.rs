@@ -1,7 +1,5 @@
-use serde::{Deserialize, Deserializer};
-use serde_json::Value;
+use serde::Deserialize;
 use std::{
-    env,
     fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
@@ -10,7 +8,6 @@ use std::{
 };
 
 use tabled::Tabled;
-use tokio::fs;
 
 use crate::{
     app,
@@ -38,7 +35,7 @@ impl Into<TablePrinter> for InstallationCandidate {
         TablePrinter {
             identifier: self.identifier.to_owned(),
             name: self.product_name.to_owned(),
-            version: self.version.to_owned(),
+            version: self.version.into(),
             flavor: self.flavor.name.to_owned(),
             installed: self.installed,
         }
@@ -117,7 +114,7 @@ impl SearchCandidate {
 
         Some(SearchCandidate {
             product_name: product_name.to_owned(),
-            version: version.map(|x| Version(x.to_owned())),
+            version: version.map(|x| Version::new(x)),
             identifier: identifier.map(|x| x.to_owned()),
             flavor: flavor_str.unwrap().to_owned(),
         })
@@ -136,6 +133,12 @@ impl SearchCandidate {
 
 #[derive(Debug, Clone)]
 pub struct Version(String);
+
+impl Version {
+    pub fn new(version_str: &str) -> Self {
+        Self(version_str.to_owned())
+    }
+}
 impl Deref for Version {
     type Target = str;
 
@@ -156,6 +159,12 @@ impl AsRef<str> for Version {
     }
 }
 
+impl Into<String> for Version {
+    fn into(self) -> String {
+        self.0
+    }
+}
+
 #[derive(Debug)]
 pub struct InstallationCandidate {
     pub remote_id: String,
@@ -164,7 +173,7 @@ pub struct InstallationCandidate {
 
     pub product_name: String,
 
-    pub version: String,
+    pub version: Version,
 
     pub identifier: String,
 
@@ -179,7 +188,7 @@ impl InstallationCandidate {
     ///
     /// e.g, 5.2.7033 -> 5.3.7033.0
     pub fn make_version_4_parts(&self) -> String {
-        let mut s = self.version.to_owned();
+        let mut s = self.version.0.to_owned();
         let mut count = self.version.split('.').count();
         while count < 4 {
             count += 1;
@@ -380,7 +389,7 @@ impl FromStr for InstallationCandidate {
             remote_id: String::default(),
             repo_location: String::default(),
             product_name: product_name.to_owned(),
-            version: version.to_owned(),
+            version: Version::new(version),
             identifier: identifier.to_owned(),
             flavor: flavor.unwrap().to_owned(),
             installed: false,
@@ -473,7 +482,7 @@ pub struct InstalledAppXProduct {
 
 #[cfg(test)]
 mod tests {
-    use crate::product;
+    use crate::{candidate::Version, product};
 
     use super::InstallationCandidate;
 
@@ -486,7 +495,7 @@ mod tests {
                 .unwrap()
                 .to_owned(),
             identifier: "develop".to_owned(),
-            version: "5.2.3-7023".to_owned(),
+            version: Version::new("5.2.3-7023"),
             product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
             remote_id: String::default(),
             repo_location: String::default(),

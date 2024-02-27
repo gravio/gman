@@ -175,7 +175,7 @@ pub async fn get_builds<'a>(
                                 for build in branch.builds {
                                     let ci = InstallationCandidate {
                                         remote_id: build.id.to_string(),
-                                        version: build.build_number,
+                                        version: Version::new(build.build_number.as_str()),
                                         identifier: branch.name.to_owned(),
                                         product_name: product.name.to_owned(),
                                         flavor: flavor.to_owned(),
@@ -287,7 +287,7 @@ pub async fn get_with_build_id_by_candidate<'a>(
                         let c = InstallationCandidate {
                             remote_id: build.id.to_string(),
                             product_name: candidate.product_name.to_owned(),
-                            version: build.build_number.to_owned(),
+                            version: Version::new(build.build_number.as_str()),
                             identifier: build.branch_name.unwrap_or(build.build_number.to_owned()),
                             flavor: candidate.flavor.to_owned(),
                             repo_location: repo_url.to_owned(),

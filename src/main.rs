@@ -7,7 +7,7 @@ mod gman_error;
 mod platform;
 mod product;
 mod team_city;
-use candidate::InstallationCandidate;
+use candidate::{InstallationCandidate, Version};
 use clap::Parser;
 use cli::Commands;
 use client_config::*;
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             remote_id: String::default(),
                             repo_location: String::default(),
                             product_name: installed.product_name.to_owned(),
-                            version: installed.version.to_owned(),
+                            version: Version::new(installed.version.as_str()),
                             identifier: "--".to_owned(),
                             flavor: product::Flavor::empty(),
                             installed: true,
