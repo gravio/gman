@@ -1,4 +1,4 @@
-use std::{borrow::Cow, env, fs, path::PathBuf, str::FromStr};
+use std::{borrow::Cow, env, fmt::Display, fs, path::PathBuf, str::FromStr};
 
 use lazy_static::lazy_static;
 use serde::Deserialize;
@@ -19,6 +19,21 @@ pub(crate) struct PublisherIdentity {
     /// Which product tags this publisher is valid for
     #[serde(rename = "Products")]
     pub products: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "Type")]
+pub enum RepositoryCredentials {
+    BearerToken {
+        #[serde(rename = "Token")]
+        token: String,
+    },
+    BasicAuth {
+        #[serde(rename = "Username")]
+        username: String,
+        #[serde(rename = "Password")]
+        password: Option<String>,
+    },
 }
 
 #[derive(Deserialize, Debug)]
@@ -44,7 +59,11 @@ pub(crate) struct CandidateRepository {
 
     /// API Credentials for this repository
     #[serde(rename = "RepositoryCredentials")]
-    pub repository_credentials: Option<String>,
+    pub repository_credentials: Option<RepositoryCredentials>,
+
+    /// Which product tags this publisher is valid for
+    #[serde(rename = "Products")]
+    pub products: Vec<String>,
 }
 #[derive(Deserialize, Debug)]
 pub(crate) struct ClientConfig {

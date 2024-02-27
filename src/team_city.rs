@@ -139,12 +139,17 @@ pub async fn get_builds<'a>(
                     url.set_query(Some("fields=branch(name,builds(build(id,number,finishDate,artifacts($locator(count:1),count:1)),count,$locator(state:finished,status:SUCCESS,count:1)))"));
 
                     let request: reqwest::Request = match &repo.repository_credentials {
-                        Some(credentials) => http_client
-                            .get(url)
-                            .header("Accept", "Application/json")
-                            .bearer_auth(credentials)
-                            .build()
-                            .unwrap(),
+                        Some(credentials) => {
+                            let r = http_client.get(url).header("Accept", "Application/json");
+                            match credentials {
+                                crate::RepositoryCredentials::BearerToken { token } => {
+                                    r.bearer_auth(token).build().unwrap()
+                                }
+                                crate::RepositoryCredentials::BasicAuth { username, password } => {
+                                    r.basic_auth(username, password.to_owned()).build().unwrap()
+                                }
+                            }
+                        }
                         None => http_client.get(url).build().unwrap(),
                     };
                     let res = http_client.execute(request).await?;
@@ -236,12 +241,17 @@ pub async fn get_build_id_by_candidate<'a>(
                 );
 
             let request: reqwest::Request = match &repo.repository_credentials {
-                Some(credentials) => http_client
-                    .get(url)
-                    .header("Accept", "Application/json")
-                    .bearer_auth(credentials)
-                    .build()
-                    .unwrap(),
+                Some(credentials) => {
+                    let r = http_client.get(url).header("Accept", "Application/json");
+                    match credentials {
+                        crate::RepositoryCredentials::BearerToken { token } => {
+                            r.bearer_auth(token).build().unwrap()
+                        }
+                        crate::RepositoryCredentials::BasicAuth { username, password } => {
+                            r.basic_auth(username, password.to_owned()).build().unwrap()
+                        }
+                    }
+                }
                 None => http_client.get(url).build().unwrap(),
             };
 
@@ -330,11 +340,17 @@ pub async fn download_artifact<'a>(
 
         /* Send HEAD for file size info */
         let request: reqwest::Request = match &repo.repository_credentials {
-            Some(credentials) => http_client
-                .head(url.clone())
-                .bearer_auth(credentials)
-                .build()
-                .unwrap(),
+            Some(credentials) => {
+                let r = http_client.head(url.clone());
+                match credentials {
+                    crate::RepositoryCredentials::BearerToken { token } => {
+                        r.bearer_auth(token).build().unwrap()
+                    }
+                    crate::RepositoryCredentials::BasicAuth { username, password } => {
+                        r.basic_auth(username, password.to_owned()).build().unwrap()
+                    }
+                }
+            }
             None => http_client.get(url.clone()).build().unwrap(),
         };
         let response = http_client.execute(request).await?;
@@ -373,13 +389,20 @@ pub async fn download_artifact<'a>(
 
         /* Send GET for body */
         let request: reqwest::Request = match &repo.repository_credentials {
-            Some(credentials) => http_client
-                .head(url.clone())
-                .bearer_auth(credentials)
-                .build()
-                .unwrap(),
+            Some(credentials) => {
+                let r = http_client.head(url.clone());
+                match credentials {
+                    crate::RepositoryCredentials::BearerToken { token } => {
+                        r.bearer_auth(token).build().unwrap()
+                    }
+                    crate::RepositoryCredentials::BasicAuth { username, password } => {
+                        r.basic_auth(username, password.to_owned()).build().unwrap()
+                    }
+                }
+            }
             None => http_client.get(url.clone()).build().unwrap(),
         };
+
         let response = http_client.execute(request).await?;
         let res_status = response.status();
         if res_status != 200 {
@@ -412,14 +435,33 @@ pub async fn download_artifact<'a>(
         let mut downloaded: u64 = 0;
         for range in PartialRangeIter::new(0, length - 1, chunk_size)? {
             let request: reqwest::Request = match &repo.repository_credentials {
-                Some(credentials) => http_client
-                    .get(url.clone())
-                    .bearer_auth(credentials)
-                    .header(RANGE, range)
-                    .build()
-                    .unwrap(),
+                Some(credentials) => {
+                    let r = http_client.get(url.clone()).header(RANGE, range);
+                    match credentials {
+                        crate::RepositoryCredentials::BearerToken { token } => {
+                            r.bearer_auth(token).build().unwrap()
+                        }
+                        crate::RepositoryCredentials::BasicAuth { username, password } => {
+                            r.basic_auth(username, password.to_owned()).build().unwrap()
+                        }
+                    }
+                }
                 None => http_client.get(url.clone()).build().unwrap(),
             };
+            // let request: reqwest::Request = match &repo.repository_credentials {
+            //     Some(credentials) => {
+            //         let r = http_client.get(url).header(RANGE, range);
+            //         match credentials {
+            //             crate::RepositoryCredentials::BearerToken(token) => {
+            //                 r.bearer_auth(token).build().unwrap()
+            //             }
+            //             crate::RepositoryCredentials::BasicAuth { username, password } => {
+            //                 r.basic_auth(username, password.to_owned()).build().unwrap()
+            //             }
+            //         }
+            //     }
+            //     None => http_client.get(url).build().unwrap(),
+            // };
             let response = http_client.execute(request).await?;
 
             let status = response.status();
