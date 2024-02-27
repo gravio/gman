@@ -4,7 +4,7 @@ use std::str::FromStr as _;
 use std::{fs::File, io::BufReader, process::Command};
 
 use crate::candidate::{InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter};
-use crate::gman_error::GravioError;
+use crate::gman_error::GManError;
 use crate::platform::Platform;
 use crate::{
     app, download_artifact, get_build_id_by_candidate, get_builds, product, CandidateRepository,
@@ -97,7 +97,7 @@ impl Client {
 
         let current_platform = Platform::platform_for_current_platform();
         if current_platform.is_none() {
-            return Err(Box::new(GravioError::new(
+            return Err(Box::new(GManError::new(
                 "Cant get candidate builds for platform, current platform is not supported",
             )));
         }
@@ -159,7 +159,7 @@ impl Client {
             }
             None => {
                 eprintln!("No item named {} found on system, cannot uninstall", &name);
-                Err(Box::new(GravioError::new("No item found")))
+                Err(Box::new(GManError::new("No item found")))
             }
         }
     }
@@ -302,10 +302,11 @@ impl Client {
             }
         });
 
-        /* Drop non platform, non product items */
+        /* Drop non platform, non product items, non desired flavor items */
         found_candidates.retain(|x| {
             (x.flavor.platform == search.flavor.platform)
-                && (x.product_name.to_lowercase() == search.product_name.to_lowercase())
+                && (x.product_name.to_lowercase() == search.product_name.to_lowercase()
+                    && x.flavor.name.to_lowercase() == search.flavor.name.to_lowercase())
         });
 
         for found in found_candidates.into_iter() {
@@ -322,7 +323,6 @@ impl Client {
                     return Some(found);
                 }
             }
-
             if search.version.is_none() && search.identifier.is_none() {
                 log::info!("Found matching inexact unspecified version/identifier in cache");
                 return Some(found);
@@ -379,11 +379,13 @@ impl Client {
             } else {
                 // Print the error message if the command failed
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(GravioError::new(
+                return Err(Box::new(GManError::new(
                     "Failed to get installations: Studio",
                 )));
             }
         }
+
+        /* get Handbookx */
 
         /* get HubKit */
         {
@@ -422,7 +424,7 @@ impl Client {
             } else {
                 // Print the error message if the command failed
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(GravioError::new(
+                return Err(Box::new(GManError::new(
                     "Failed to get installations: HubKit",
                 )));
             }
@@ -726,6 +728,30 @@ mod tests {
 
         let candidate = SearchCandidate::new(
             product::PRODUCT_GRAVIO_STUDIO.name,
+            match &target {
+                Target::Identifier(_) => None,
+                Target::Version(x) => Some(x.as_str()),
+            },
+            match &target {
+                Target::Identifier(x) => Some(x.as_str()),
+                Target::Version(_) => None,
+            },
+            None,
+        )
+        .unwrap();
+
+        c.install(&candidate, Some(false))
+            .await
+            .expect("Failed to install item");
+    }
+
+    #[tokio::test]
+    async fn install_handbookx_specific_version() {
+        let c = Client::load().expect("Failed to load client");
+        let target: Target = Target::Version("1.0.1656.0".to_owned());
+
+        let candidate = SearchCandidate::new(
+            product::PRODUCT_HANDBOOK_X.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),

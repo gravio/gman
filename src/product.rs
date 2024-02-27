@@ -3,7 +3,7 @@ use std::str::FromStr;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 
-use crate::{gman_error::GravioError, platform::Platform};
+use crate::{gman_error::GManError, platform::Platform};
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct Product {
@@ -74,7 +74,7 @@ impl<'de> Deserialize<'de> for PackageType {
 }
 
 impl FromStr for PackageType {
-    type Err = GravioError;
+    type Err = GManError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.to_lowercase();
@@ -88,7 +88,7 @@ impl FromStr for PackageType {
             "deb" => Ok(Self::Deb),
             "apk" => Ok(Self::Apk),
             "ioa" => Ok(Self::Ipa),
-            _ => Err(GravioError::new("Not a valid PackageType string")),
+            _ => Err(GManError::new("Not a valid PackageType string")),
         }
     }
 }
@@ -252,7 +252,6 @@ lazy_static! {
                 teamcity_id: "Hubble_2_HubbleFlutter",
                 teamcity_executable_path: "handbookx-release.apk",
                 package_type: PackageType::Apk,
-
             },
         ],
     };

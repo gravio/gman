@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
 
-use crate::gman_error::GravioError;
+use crate::gman_error::GManError;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -32,7 +32,7 @@ pub enum Commands {
         name: String,
         build_or_branch: Option<String>,
         #[clap(short, long, help = "Product flavor (e.g.,, Sideloading, Arm64 etc)")]
-        flavor_str: Option<String>,
+        flavor: Option<String>,
         #[clap(
             short,
             long,
@@ -66,7 +66,7 @@ impl ToString for Target {
 }
 
 impl FromStr for Target {
-    type Err = GravioError;
+    type Err = GManError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match VERSION_REGEX.find_iter(s).next() {

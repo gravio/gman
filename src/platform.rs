@@ -2,7 +2,7 @@ use std::{fmt::Display, str::FromStr};
 
 use serde::Deserialize;
 
-use crate::gman_error::GravioError;
+use crate::gman_error::GManError;
 
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum Platform {
@@ -37,7 +37,7 @@ impl<'de> Deserialize<'de> for Platform {
 }
 
 impl FromStr for Platform {
-    type Err = GravioError;
+    type Err = GManError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.to_lowercase();
@@ -48,7 +48,7 @@ impl FromStr for Platform {
             "macos" => Ok(Self::Mac),
             "rpi" => Ok(Self::RaspberryPi),
             "linux" => Ok(Self::Linux),
-            _ => Err(GravioError::new("Not a valid Platform string")),
+            _ => Err(GManError::new("Not a valid Platform string")),
         }
     }
 }

@@ -10,7 +10,7 @@ use tokio::fs;
 
 use crate::{
     app,
-    gman_error::GravioError,
+    gman_error::GManError,
     platform::Platform,
     product::{self, Flavor, PackageType, Product},
 };
@@ -198,7 +198,7 @@ impl InstallationCandidate {
     }
 
     pub fn install(&self, binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        /* Try Gravio Studio */
+        /* Try UWP */
         #[cfg(target_os = "windows")]
         if self.flavor.package_type == PackageType::AppX {
             log::debug!("Creating a temporary file for this appx extraction");
@@ -224,7 +224,7 @@ impl InstallationCandidate {
                     "Failed to extract appx zip items: {}",
                     unzip_output.status.code().unwrap()
                 );
-                return Err(Box::new(GravioError::new(&format!(
+                return Err(Box::new(GManError::new(&format!(
                     "Failed to install {}, couldn't extract to temp directory",
                     self.product_name
                 ))));
@@ -251,7 +251,7 @@ impl InstallationCandidate {
                                             self.product_name,
                                             install_output.status.code().unwrap()
                                         );
-                                        return Err(Box::new(GravioError::new(
+                                        return Err(Box::new(GManError::new(
                                                     &format!("Failed to install {}, couldn't run install script successfully", self.product_name),
                                                 )));
                                     }
@@ -264,45 +264,68 @@ impl InstallationCandidate {
                 }
                 Err(_) => {
                     log::error!("Failed to read temporary extracted directory");
-                    return Err(Box::new(GravioError::new(
+                    return Err(Box::new(GManError::new(
                         "Failed to read temporary extracted directory",
                     )));
                 }
             }
         }
-        /* Try HubKit */
-        else if self.flavor.package_type == PackageType::Msi {
-            #[cfg(target_os = "windows")]
-            {
-                let output = Command::new("msiexec")
-                    .args(["/i", binary_path.to_str().unwrap()])
-                    .output()?;
+        /* Try misx */
+        else if self.flavor.package_type == PackageType::MsiX {
+            let install_command =
+                format!("Install-AppxPackage \"{}\"", binary_path.to_str().unwrap());
+            let install_output = Command::new("powershell")
+                .arg("-Command")
+                .arg(install_command)
+                .output()?;
 
-                // Check if the command was successful
-                if output.status.success() {
-                    // Convert the output bytes to a string
-                    log::debug!("Successfully installed {}", self.product_name);
-                    return Ok(());
-                }
-                if output.status.code().unwrap_or_default() == 1602 {
-                    return Err(Box::new(GravioError::new("User canceled installation")));
-                }
-                return Err(Box::new(GravioError::new(
-                    "Unknown error occurred during installation",
-                )));
+            if !install_output.status.success() {
+                // Convert the output bytes to a string
+                log::debug!(
+                    "Failed to install {}: {}",
+                    self.product_name,
+                    install_output.status.code().unwrap()
+                );
+                return Err(Box::new(GManError::new(&format!(
+                    "Failed to install {}, couldn't run MSIX installer successfully",
+                    self.product_name
+                ))));
             }
+        } else if self.flavor.package_type == PackageType::Msi {
+            let output = Command::new("msiexec")
+                .args(["/i", binary_path.to_str().unwrap()])
+                .output()?;
+
+            // Check if the command was successful
+            if output.status.success() {
+                // Convert the output bytes to a string
+                log::debug!("Successfully installed {}", self.product_name);
+                return Ok(());
+            }
+            if output.status.code().unwrap_or_default() == 1602 {
+                return Err(Box::new(GManError::new("User canceled installation")));
+            }
+            return Err(Box::new(GManError::new(
+                "Unknown error occurred during installation",
+            )));
         }
+
+        #[cfg(target_os = "macos")]
+        {}
+
+        #[cfg(target_os = "linux")]
+        {}
         Ok(())
     }
 }
 
 impl FromStr for InstallationCandidate {
-    type Err = GravioError;
+    type Err = GManError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let splits = s.split('@').collect::<Vec<_>>();
         if splits.len() != 6 {
-            return Err(GravioError::new("Not an InstallationCandidate string"));
+            return Err(GManError::new("Not an InstallationCandidate string"));
         }
         let product_name = splits[0];
         let flavor_str = splits[2];
@@ -311,7 +334,7 @@ impl FromStr for InstallationCandidate {
 
         let product = Product::from_name(product_name);
         if let None = product {
-            return Err(GravioError::new(
+            return Err(GManError::new(
                 "Failed to extract product from InstallationCandidate FromStr",
             ));
         }
@@ -323,7 +346,7 @@ impl FromStr for InstallationCandidate {
             .find(|x| x.name.to_lowercase() == flavor_str.to_lowercase());
 
         if let None = flavor {
-            return Err(GravioError::new(
+            return Err(GManError::new(
                 "Failed to extract flavor from InstallationCandidate FromStr",
             ));
         }
@@ -370,7 +393,7 @@ impl InstalledProduct {
                     return Ok(());
                 }
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(GravioError::new(
+                return Err(Box::new(GManError::new(
                     "Failed to get installations: Studio",
                 )));
             }
@@ -390,7 +413,7 @@ impl InstalledProduct {
                     return Ok(());
                 }
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(GravioError::new(
+                return Err(Box::new(GManError::new(
                     "Failed to get installations: Studio",
                 )));
             }

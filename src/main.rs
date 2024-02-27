@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Some(Commands::Install {
             name,
             build_or_branch,
-            flavor_str,
+            flavor,
             automatic_upgrade,
         }) => {
             let c = Client::load().expect("Couldnt load client");
@@ -89,8 +89,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 Some(x) => Target::from_str(x.as_ref()).unwrap(),
                 None => Target::Identifier("master".to_owned()),
             };
-
-            println!("Installing {}@{}", name, target.to_string());
 
             let candidate = SearchCandidate::new(
                 name,
@@ -102,11 +100,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     Target::Identifier(x) => Some(x.as_str()),
                     Target::Version(_) => None,
                 },
-                flavor_str.as_ref().map(|x| x.as_str()),
+                flavor.as_ref().map(|x| x.as_str()),
             );
 
             match candidate {
                 Some(candidate) => {
+                    println!(
+                        "Installing {}@{}, flavor {}",
+                        name,
+                        target.to_string(),
+                        candidate.flavor.name,
+                    );
                     c.install(&candidate, automatic_upgrade.to_owned())
                         .await
                         .expect("Failed to install item");

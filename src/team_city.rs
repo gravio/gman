@@ -17,7 +17,7 @@ use serde_json::Value;
 use crate::{
     app,
     candidate::{InstallationCandidate, SearchCandidate},
-    gman_error::GravioError,
+    gman_error::GManError,
     platform::Platform,
     product::Product,
     CandidateRepository,
@@ -206,7 +206,7 @@ pub async fn get_build_id_by_candidate<'a>(
     valid_repositories: &[&'a CandidateRepository],
 ) -> Result<Option<(InstallationCandidate, &'a CandidateRepository)>, Box<dyn std::error::Error>> {
     if valid_repositories.is_empty() {
-        return Err(Box::new(GravioError::new(
+        return Err(Box::new(GManError::new(
             "No repositories supplied for searching",
         )));
     }
@@ -296,7 +296,7 @@ pub async fn get_build_id_by_candidate<'a>(
         }
     }
 
-    Err(Box::new(GravioError::new(
+    Err(Box::new(GManError::new(
         "Unknown error occurred while getting build id: nothing was returned",
     )))
 }
@@ -347,13 +347,13 @@ pub async fn download_artifact<'a>(
             );
             if res_status == 401 || res_status == 403 {
                 eprintln!("Not authorized to access repository {}", &repo.name);
-                return Err(Box::new(GravioError::new("Not authorized")));
+                return Err(Box::new(GManError::new("Not authorized")));
             }
             if res_status == 404 {
                 eprintln!("File not found on repo {}", &repo.name);
-                return Err(Box::new(GravioError::new("File not found")));
+                return Err(Box::new(GManError::new("File not found")));
             }
-            return Err(Box::new(GravioError::new(
+            return Err(Box::new(GManError::new(
                 "Unknown error occurred during download request",
             )));
         }
@@ -365,6 +365,10 @@ pub async fn download_artifact<'a>(
             u64::from_str(length.to_str()?).map_err(|_| "invalid Content-Length header")?;
 
         let output_file_temp_path = &candidate.make_output_for_candidate(temp_dir);
+        /* create the parent directory if necessary */
+        let prefix = output_file_temp_path.parent().unwrap();
+        tokio::fs::create_dir_all(prefix).await?;
+
         let mut output_file_temp = tokio::fs::File::create(&output_file_temp_path).await?;
 
         /* Send GET for body */
@@ -386,13 +390,13 @@ pub async fn download_artifact<'a>(
             );
             if res_status == 401 || res_status == 403 {
                 eprintln!("Not authorized to access repository {}", &repo.name);
-                return Err(Box::new(GravioError::new("Not authorized")));
+                return Err(Box::new(GManError::new("Not authorized")));
             }
             if res_status == 404 {
                 eprintln!("File not found on repo {}", &repo.name);
-                return Err(Box::new(GravioError::new("File not found")));
+                return Err(Box::new(GManError::new("File not found")));
             }
-            return Err(Box::new(GravioError::new(
+            return Err(Box::new(GManError::new(
                 "Unknown error occurred during download request",
             )));
         }
@@ -420,9 +424,7 @@ pub async fn download_artifact<'a>(
 
             let status = response.status();
             if !(status == 200 || status == 206) {
-                return Err(Box::new(GravioError::new(
-                    "Unexpected error during download",
-                )));
+                return Err(Box::new(GManError::new("Unexpected error during download")));
             }
 
             let mut byte_stream = response.bytes_stream();
@@ -442,7 +444,7 @@ pub async fn download_artifact<'a>(
 
         Ok(output_file_cache_path)
     } else {
-        Err(Box::new(GravioError::new(
+        Err(Box::new(GManError::new(
             "Repository did not have a Server specified",
         )))
     }

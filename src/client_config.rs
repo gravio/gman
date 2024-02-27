@@ -9,6 +9,8 @@ use crate::{app, platform::Platform};
 pub(crate) struct CandidateRepository {
     #[serde(rename(deserialize = "Name"))]
     pub name: String,
+    #[serde(rename(deserialize = "RepositoryType"))]
+    pub repository_type: String,
     #[serde(rename(deserialize = "Platforms"))]
     pub platforms: Vec<Platform>,
     #[serde(rename(deserialize = "RepositoryFolder"))]
