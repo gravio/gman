@@ -352,22 +352,27 @@ impl Client {
     fn get_installed_windows(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
         let mut installed: Vec<InstalledProduct> = Vec::new();
 
-        let publisher_where = self
+        let publisher_ids_for_platform = self
             .config
             .publisher_identities
             .iter()
             .filter(|x| x.platforms.contains(&Platform::Windows))
-            .map(|x| format!("$_.Publisher -eq \"{}\"", x.id))
-            .collect::<Vec<String>>()
-            .join(" -or ");
+            .map(|x| x.id.as_ref())
+            .collect::<Vec<&str>>();
 
-        if publisher_where.is_empty() {
+        if publisher_ids_for_platform.is_empty() {
             log::warn!("No publishers specified, therefore cant get any Windows installed application information");
             return Ok(installed);
         }
 
         /* get Appx Packages */
         {
+            let publisher_where = publisher_ids_for_platform
+                .iter()
+                .map(|x| format!("$_.Publisher -eq \"{}\"", x))
+                .collect::<Vec<String>>()
+                .join(" -or ");
+
             let command = format!(
                 "Get-AppxPackage | Where-Object {{{}}} | Select Name, Version, PackageFullName | ConvertTo-Json -Compress",
                 publisher_where
@@ -396,22 +401,36 @@ impl Client {
                 // Print the error message if the command failed
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
                 return Err(Box::new(GManError::new(
-                    "Failed to get installations: Studio",
+                    "Failed to get installations: AppX items",
                 )));
             }
         }
 
-        /* get HubKit */
+        /* get MSI installed items */
         {
-            let command = r#"
-            foreach($obj in Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall") {
-                $dn = $obj.GetValue('DisplayName')
-                if($dn -ne $null -and $dn.Contains('Gravio HubKit')) {
-                  $key_name = ($obj | Select-Object Name | Split-Path -Leaf).replace('}}', '}')
-                  $ver = $obj.GetValue('DisplayVersion')
-                  Write-Host $dn@$ver@$key_name
-                }
-              }"#;
+            let publisher_where = publisher_ids_for_platform
+                .iter()
+                .map(|x| format!("$publisher -eq \"{}\"", x))
+                .collect::<Vec<String>>()
+                .join(" -or ");
+
+            let command = {
+                let parts = [
+                    r#"foreach($obj in Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall") {
+                    $dn = $obj.GetValue('DisplayName')
+                    $publisher = $obj.GetValue('Publisher')
+                    if($dn -ne $null -and ("#,
+                    &publisher_where,
+                    r#")) {
+                        $key_name = ($obj | Select-Object Name | Split-Path -Leaf).replace('}}', '}')
+                        $ver = $obj.GetValue('DisplayVersion')
+                        Write-Host $dn@$ver@$key_name
+                      }
+                    }"#,
+                ];
+
+                String::from_iter(parts)
+            };
 
             let output = Command::new("powershell")
                 .arg("-Command")
@@ -440,7 +459,7 @@ impl Client {
                 // Print the error message if the command failed
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
                 return Err(Box::new(GManError::new(
-                    "Failed to get installations: HubKit",
+                    "Failed to get installations: MSI items",
                 )));
             }
         }
