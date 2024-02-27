@@ -40,15 +40,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 if !show_installed {
                     candidates.retain_mut(|cd| !cd.product_equals(&installed))
                 } else {
-                    if !candidates.iter().any(|x| {
-                        x.product_equals(installed) && x.make_version_4_parts() == installed.version
-                    }) {
+                    if !candidates
+                        .iter()
+                        .any(|x| x.product_equals(installed) && x.version == installed.version)
+                    {
                         // TODO(nf): the flavor here is a dummy placeholder. This whole "show installed stuff even when not in the list" stuff is very messy
                         candidates.push(InstallationCandidate {
                             remote_id: String::default(),
                             repo_location: String::default(),
                             product_name: installed.product_name.to_owned(),
-                            version: Version::new(installed.version.as_str()),
+                            version: installed.version.clone(),
                             identifier: "--".to_owned(),
                             flavor: product::Flavor::empty(),
                             installed: true,
@@ -59,9 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             /* set the Installed flag */
             for cd in candidates.iter_mut() {
                 for installed in &installed_candidates {
-                    if cd.product_equals(&installed)
-                        && cd.make_version_4_parts() == installed.version
-                    {
+                    if cd.product_equals(&installed) && cd.version == installed.version {
                         cd.installed = true;
                     }
                 }
@@ -72,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         /* Uninstall */
         Some(Commands::Uninstall { name, ver }) => {
             let c = Client::load().expect("Couldnt load client");
-            let _ = c.uninstall(&name, ver.to_owned());
+            let _ = c.uninstall(&name, ver.to_owned().map(|x| Version::new(&x)));
             exit(0)
         }
         /* Install */

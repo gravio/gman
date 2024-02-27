@@ -47,7 +47,7 @@ impl Into<TablePrinter> for InstalledProduct {
         TablePrinter {
             identifier: self.package_name.to_owned(),
             name: self.product_name.to_owned(),
-            version: self.version.to_owned(),
+            version: self.version.into(),
             flavor: String::default(),
             installed: true,
         }
@@ -59,7 +59,7 @@ impl From<&InstalledProduct> for TablePrinter {
         TablePrinter {
             identifier: value.package_name.to_owned(),
             name: value.product_name.to_owned(),
-            version: value.version.to_owned(),
+            version: value.version.0.to_owned(),
             flavor: String::default(),
             installed: true,
         }
@@ -131,14 +131,33 @@ impl SearchCandidate {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Version(String);
 
 impl Version {
     pub fn new(version_str: &str) -> Self {
         Self(version_str.to_owned())
     }
+
+    pub fn make_version_4_parts(&self) -> Version {
+        let mut s = self.0.to_owned();
+        let mut count = s.split('.').count();
+        while count < 4 {
+            count += 1;
+            s.push_str(".0");
+        }
+        Version::new(&s)
+    }
 }
+
+impl PartialEq for Version {
+    fn eq(&self, other: &Self) -> bool {
+        self.make_version_4_parts().0 == other.make_version_4_parts().0
+    }
+}
+
+impl Eq for Version {}
+
 impl Deref for Version {
     type Target = str;
 
@@ -403,7 +422,7 @@ impl FromStr for InstallationCandidate {
 pub struct InstalledProduct {
     pub product_name: String,
 
-    pub version: String,
+    pub version: Version,
 
     pub package_name: String,
 
@@ -475,7 +494,7 @@ pub struct InstalledAppXProduct {
     #[serde(rename = "Name")]
     pub name: String,
     #[serde(rename = "Version")]
-    pub version: String,
+    pub version: Version,
     #[serde(rename = "PackageFullName")]
     pub package_full_name: String,
 }

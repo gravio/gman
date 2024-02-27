@@ -5,6 +5,7 @@ use std::{fs::File, io::BufReader, process::Command};
 
 use crate::candidate::{
     InstallationCandidate, InstalledAppXProduct, InstalledProduct, SearchCandidate, TablePrinter,
+    Version,
 };
 use crate::gman_error::GManError;
 use crate::platform::Platform;
@@ -136,7 +137,7 @@ impl Client {
     pub fn uninstall(
         &self,
         name: &str,
-        version: Option<String>,
+        version: Option<Version>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Attempting to find uninstallation target for {}", &name);
 
@@ -493,12 +494,12 @@ impl Client {
                 let result = String::from_utf8_lossy(&output.stdout);
                 if result.len() > 0 {
                     let hubkit_splits: Vec<&str> = result.split("@").collect();
-                    let version = hubkit_splits[1].trim().to_owned();
+                    let version = hubkit_splits[1].trim();
                     let identifier = hubkit_splits[2].trim().to_owned();
 
                     let installed_product = InstalledProduct {
                         product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
-                        version: version.to_owned(),
+                        version: Version::new(version),
                         package_name: identifier.to_owned(),
                         package_type: product::PackageType::Msi,
                     };
