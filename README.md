@@ -3,6 +3,22 @@
 Client: Manages installations of Studio, Hubkit on a (local) machine Server:
 Hosts versioned Gravio binaries
 
+## Requirements (Usage)
+
+### Windows
+
+- Powershell 5+
+
+## Requirements (Building)
+
+- Rust 1.76+
+
+# Building
+
+```bash
+cargo build
+```
+
 # Client
 
 ## Example
@@ -10,7 +26,7 @@ Hosts versioned Gravio binaries
 ### Install Studio to the local machine, using the latest develop branch
 
 ```bash
-gman install gs/win develop
+gman install graviostudio develop
 ```
 
 ## Install Studio to the local machine, using the official version number
