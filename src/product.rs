@@ -92,13 +92,17 @@ impl FromStr for PackageType {
         }
     }
 }
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct TeamCityMetadata {
+    pub teamcity_id: &'static str,
+    pub teamcity_executable_path: &'static str,
+}
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct Flavor {
     pub platform: Platform,
     pub name: &'static str,
-    pub teamcity_id: &'static str,
-    pub teamcity_executable_path: &'static str,
+    pub teamcity_metadata: TeamCityMetadata,
     pub package_type: PackageType,
 }
 
@@ -107,9 +111,11 @@ impl Flavor {
         Self {
             platform: Platform::platform_for_current_platform().unwrap(),
             name: "--",
-            teamcity_id: "--",
-            teamcity_executable_path: "--",
             package_type: PackageType::Msi,
+            teamcity_metadata: TeamCityMetadata {
+                teamcity_id: "--",
+                teamcity_executable_path: "--",
+            },
         }
     }
 }
@@ -136,31 +142,43 @@ lazy_static! {
             Flavor {
                 platform: Platform::Windows,
                 name: "WindowsAppStore",
-                teamcity_id: "Gravio_GravioStudio4forWindows",
-                teamcity_executable_path: "graviostudio.zip",
                 package_type: PackageType::AppX,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_GravioStudio4forWindows",
+                    teamcity_executable_path: "graviostudio.zip",
+                    },
+
             },
             Flavor {
                 platform: Platform::Windows,
                 name: "Sideloading",
-                teamcity_id: "Gravio_GravioStudio4forWindows",
-                teamcity_executable_path: "graviostudio_sideloading.zip",
                 package_type: PackageType::AppX,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_GravioStudio4forWindows",
+                    teamcity_executable_path: "graviostudio_sideloading.zip",
+                    },
+
             },
             Flavor {
                 platform: Platform::Mac,
                 name: "DeveloperId",
-                teamcity_id: "Gravio_GravioStudio4ForMac",
-                teamcity_executable_path: "developerid/GravioStudio.dmg",
                 package_type: PackageType::Dmg,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_GravioStudio4ForMac",
+                    teamcity_executable_path: "developerid/GravioStudio.dmg",
+                    },
+
 
             },
             Flavor {
                 platform: Platform::Mac,
                 name: "AppStore",
-                teamcity_id: "Gravio_GravioStudio4ForMac",
-                teamcity_executable_path: "appstore/Gravio Studio.pkg",
                 package_type: PackageType::Pkg,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_GravioStudio4ForMac",
+                    teamcity_executable_path: "appstore/Gravio Studio.pkg",
+                    },
+
             }
         ],
     };
@@ -178,10 +196,13 @@ lazy_static! {
         flavors: vec![
             Flavor {
                 platform: Platform::Android,
-                teamcity_id: "Gravio_GravioMonitor",
                 name: "GoogleAppStore",
-                teamcity_executable_path: "",
                 package_type:PackageType::Apk,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_GravioMonitor",
+                    teamcity_executable_path: "",
+                    },
+
             }
         ],
     };
@@ -193,16 +214,22 @@ lazy_static! {
             Flavor{
                 platform: Platform::Windows,
                 name: "WindowsUpdateManagerExe",
-                teamcity_executable_path: "UpdateManager/build/win/ConfigurationManager.exe",
-                teamcity_id: "Gravio_UpdateManager",
                 package_type: PackageType::StandaloneExe,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_executable_path: "UpdateManager/build/win/ConfigurationManager.exe",
+                    teamcity_id: "Gravio_UpdateManager",
+                    },
+
             },
             Flavor{
                 platform: Platform::Mac,
                 name: "MacUpdateManagerDmg",
-                teamcity_executable_path: "UpdateManager/build/macOS/ConfigurationManager",
-                teamcity_id: "Gravio_UpdateManager4",
                 package_type: PackageType::Dmg,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_executable_path: "UpdateManager/build/macOS/ConfigurationManager",
+                    teamcity_id: "Gravio_UpdateManager4",
+                    },
+
             }
         ]
     };
@@ -213,16 +240,20 @@ lazy_static! {
             Flavor{
                 platform: Platform::Windows,
                 name: "WindowsHubkit",
-                teamcity_id: "Gravio_GravioHubKit4",
-                teamcity_executable_path: "GravioHubKit.msi",
                 package_type: PackageType::Msi,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_GravioHubKit4",
+                    teamcity_executable_path: "GravioHubKit.msi",
+                    },
             },
             Flavor{
                 platform: Platform::Mac,
                 name: "MacHubkit",
-                teamcity_id: "Gravio_UpdateManager4",
-                teamcity_executable_path: "GravioHubKit.dmg",
                 package_type: PackageType::Dmg,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_UpdateManager4",
+                    teamcity_executable_path: "GravioHubKit.dmg",
+                    },
 
             },
             // TODO(nf): Linux binaries are named for their version number (i.e., hubkit_5.2.1-8219_all.deb), this makes it hard to automatically extract their binary
@@ -235,23 +266,29 @@ lazy_static! {
             Flavor {
                 platform: Platform::Windows,
                 name: "Windows",
-                teamcity_id: "Hubble_HubbleForWindows10",
-                teamcity_executable_path: "handbookx.msix",
                 package_type: PackageType::MsiX,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Hubble_HubbleForWindows10",
+                    teamcity_executable_path: "handbookx.msix",
+                    },
             },
             Flavor {
                 platform: Platform::Windows,
                 name: "Sideloading",
-                teamcity_id: "Hubble_HubbleForWindows10",
-                teamcity_executable_path: "sideloadinghandbookx.msix",
                 package_type: PackageType::MsiX,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Hubble_HubbleForWindows10",
+                    teamcity_executable_path: "sideloadinghandbookx.msix",
+                    },
             },
             Flavor {
                 platform: Platform::Android,
                 name: "Android",
-                teamcity_id: "Hubble_2_HubbleFlutter",
-                teamcity_executable_path: "handbookx-release.apk",
                 package_type: PackageType::Apk,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Hubble_2_HubbleFlutter",
+                    teamcity_executable_path: "handbookx-release.apk",
+                    },
             },
         ],
     };

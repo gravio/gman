@@ -203,6 +203,45 @@ impl Client {
         }
     }
 
+    async fn get_build_server_version_if_higher_or_also_from_cache(
+        &self,
+        cached: InstallationCandidate,
+        search: &SearchCandidate,
+        valid_repositories: &Vec<&CandidateRepository>,
+    ) -> Result<InstallationCandidate, Box<dyn std::error::Error>> {
+        match get_with_build_id_by_candidate(&self.http_client, search, &valid_repositories).await {
+            Ok(res) => match res {
+                Some(found_on_server) => {
+                    if found_on_server.0.version > cached.version {
+                        println!("Found a version on the server for this identifier that is greater than the one in cache (cached: {}, found: {}), will download and install from remote", cached.version, found_on_server.0.version);
+                        let found_opt = self.download(search).await?;
+                        match found_opt {
+                            Some(with_id) => Ok(with_id),
+                            None => {
+                                eprintln!("Fetch request found an id on the build server but download request didn't find anything. This situation cannot be resolved by gman.");
+                                return Err(Box::new(GManError::new(
+                                    "Head fetch found id, but download found no id",
+                                )));
+                            }
+                        }
+                    } else {
+                        println!("Cache is up to date with version ({}) on server, will skip downloading and install from cache", found_on_server.0.version);
+                        Ok(cached)
+                    }
+                }
+                None => {
+                    log::info!("Repo returned correctly, but build id was not found on server. Will install from cache.");
+                    Ok(cached)
+                }
+            },
+            Err(e) => {
+                log::error!("Encountered an error when contacting repository for up to date information. Installing from cache: {}", e);
+                eprintln!("Encountered an error when contacting repository for up to date information. Will install the cached version");
+                Ok(cached)
+            }
+        }
+    }
+
     pub async fn install(
         &self,
         search: &SearchCandidate,
@@ -226,6 +265,8 @@ impl Client {
                 );
 
                 if let None = search.version {
+                    let valid_repositories = self.get_valid_repositories_for_platform();
+
                     match automatic_upgrade {
                         Some(should_upgrade) => match should_upgrade {
                             false => {
@@ -235,43 +276,12 @@ impl Client {
                             true => {
                                 println!("A candidate for installation has been found in the local cache. Automatic upgrade is true, will attempt to find later version on build server and will use this cached item as fallback");
 
-                                let valid_repositories = self.get_valid_repositories_for_platform();
-
-                                match get_with_build_id_by_candidate(
-                                    &self.http_client,
+                                self.get_build_server_version_if_higher_or_also_from_cache(
+                                    cached,
                                     search,
                                     &valid_repositories,
                                 )
-                                .await
-                                {
-                                    Ok(res) => match res {
-                                        Some(found_on_server) => {
-                                            if found_on_server.0.version > cached.version {
-                                                println!("Found a version on the server for this identifier that is greater than the one in cache (cached: {}, found: {}), will download and install from remote", cached.version, found_on_server.0.version);
-                                                let found_opt = self.download(search).await?;
-                                                match found_opt {
-                                                    Some(with_id) => with_id,
-                                                    None => {
-                                                        eprintln!("Fetch request found an id on the build server but download request didn't find anything. This situation cannot be resolved by gman.");
-                                                        return Err(Box::new(GManError::new("Head fetch found id, but download found no id")));
-                                                    }
-                                                }
-                                            } else {
-                                                println!("Cache is up to date with version ({}) on server, will skip downloading and install from cache", found_on_server.0.version);
-                                                cached
-                                            }
-                                        }
-                                        None => {
-                                            log::info!("Repo returned correctly, but build id was not found on server. Will install from cache.");
-                                            cached
-                                        }
-                                    },
-                                    Err(e) => {
-                                        log::error!("Encountered an error when contacting repository for up to date information. Installing from cache: {}", e);
-                                        eprintln!("Encountered an error when contacting repository for up to date information. Will install the cached version");
-                                        cached
-                                    }
-                                }
+                                .await?
                             }
                         },
                         None => {
@@ -282,7 +292,12 @@ impl Client {
                             std::io::stdin().read_line(&mut buffer)?;
                             if Self::is_console_confirm(&buffer) {
                                 println!("Will search for more recent versions, and will use this cached item as fallback");
-                                todo!()
+                                self.get_build_server_version_if_higher_or_also_from_cache(
+                                    cached,
+                                    search,
+                                    &valid_repositories,
+                                )
+                                .await?
                             } else {
                                 println!("Will not search for more recent versions, will install this cached item");
                                 cached
@@ -358,7 +373,10 @@ impl Client {
             let cmp_flavor = a.flavor.name.cmp(&b.flavor.name);
 
             if cmp_flavor == std::cmp::Ordering::Equal {
-                let cmp_version = a.version.cmp(&b.version);
+                let cmp_version = b
+                    .version
+                    .partial_cmp(&a.version)
+                    .unwrap_or(std::cmp::Ordering::Equal);
                 if cmp_version == std::cmp::Ordering::Equal {
                     a.identifier.cmp(&b.identifier)
                 } else {
@@ -647,11 +665,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_install_with_cache() {
+        let p = &product::PRODUCT_GRAVIO_STUDIO;
+        let search = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
+        let c = Client::load().expect("Failed to load client");
+
+        let res = c.install(&search, None).await;
+        assert!(res.is_ok())
+    }
+
+    #[tokio::test]
     async fn test_install_force_with_cache() {
         let p = &product::PRODUCT_GRAVIO_STUDIO;
         let search = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
         let c = Client::load().expect("Failed to load client");
-        let vv = c.get_valid_repositories_for_platform();
 
         let res = c.install(&search, Some(true)).await;
         assert!(res.is_ok())

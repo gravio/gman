@@ -250,7 +250,7 @@ impl InstallationCandidate {
 
     /// Returns the file name of the file this InstallationCandidate represents
     pub fn get_binary_file_name(&self) -> String {
-        PathBuf::from_str(&self.flavor.teamcity_executable_path)
+        PathBuf::from_str(&self.flavor.teamcity_metadata.teamcity_executable_path)
             .unwrap()
             .file_name()
             .unwrap()

@@ -131,7 +131,7 @@ pub async fn get_builds<'a>(
                     let mut url = ensure_scheme(&repo_url)?;
                     url.set_path(&format!(
                         "app/rest/buildTypes/id:{}/branches",
-                        flavor.teamcity_id
+                        flavor.teamcity_metadata.teamcity_id
                     ));
                     url.query_pairs_mut().append_key_only(
                         "default:true,policy:ACTIVE_HISTORY_AND_ACTIVE_VCS_BRANCHES",
@@ -241,7 +241,7 @@ pub async fn get_with_build_id_by_candidate<'a>(
                     "locator",
                     &format!(
                         "buildType:{},count:1,{}",
-                        &candidate.flavor.teamcity_id, &filter_for
+                        &candidate.flavor.teamcity_metadata.teamcity_id, &filter_for
                     ),
                 );
 
@@ -342,9 +342,9 @@ pub async fn download_artifact<'a>(
         let uri_str = format!(
             "{}/repository/download/{}/{}:id/{}",
             u,
-            candidate.flavor.teamcity_id,
+            candidate.flavor.teamcity_metadata.teamcity_id,
             candidate.remote_id,
-            candidate.flavor.teamcity_executable_path
+            candidate.flavor.teamcity_metadata.teamcity_executable_path
         );
 
         let url = ensure_scheme(&uri_str)?;
