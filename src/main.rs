@@ -14,7 +14,6 @@ use cli::Commands;
 use client_config::*;
 use std::process::exit;
 use std::str::FromStr;
-use team_city::*;
 
 use crate::candidate::SearchCandidate;
 use crate::cli::{Cli, Target};

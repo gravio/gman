@@ -9,10 +9,7 @@ use crate::candidate::{
 };
 use crate::gman_error::GManError;
 use crate::platform::Platform;
-use crate::{
-    app, download_artifact, get_builds, get_with_build_id_by_candidate, product, util,
-    CandidateRepository, ClientConfig,
-};
+use crate::{app, product, team_city, util, CandidateRepository, ClientConfig};
 
 use tabled::settings::{object::Rows, Alignment, Modify, Style};
 
@@ -121,7 +118,7 @@ impl Client {
             &*product::PRODUCT_HANDBOOK_X,
         ];
 
-        let mut builds = get_builds(
+        let mut builds = team_city::get_builds(
             &self.http_client,
             current_platform,
             &valid_repositories,
@@ -179,12 +176,16 @@ impl Client {
         search: &SearchCandidate,
     ) -> Result<Option<InstallationCandidate>, Box<dyn std::error::Error>> {
         let valid_repositories = self.get_valid_repositories_for_platform();
-        let result =
-            get_with_build_id_by_candidate(&self.http_client, search, &valid_repositories).await?;
+        let result = team_city::get_with_build_id_by_candidate(
+            &self.http_client,
+            search,
+            &valid_repositories,
+        )
+        .await?;
 
         match result {
             Some(found) => {
-                let _ = download_artifact(
+                let _ = team_city::download_artifact(
                     &self.http_client,
                     &found.0,
                     &found.1,
@@ -209,7 +210,13 @@ impl Client {
         search: &SearchCandidate,
         valid_repositories: &Vec<&CandidateRepository>,
     ) -> Result<InstallationCandidate, Box<dyn std::error::Error>> {
-        match get_with_build_id_by_candidate(&self.http_client, search, &valid_repositories).await {
+        match team_city::get_with_build_id_by_candidate(
+            &self.http_client,
+            search,
+            &valid_repositories,
+        )
+        .await
+        {
             Ok(res) => match res {
                 Some(found_on_server) => {
                     let sc = SearchCandidate {
@@ -672,10 +679,7 @@ impl Client {
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        candidate::SearchCandidate, cli::Target, download_artifact, get_with_build_id_by_candidate,
-        product, Client, TeamCityArtifacts, TeamCityBranch, TeamCityBuild, TeamCityBuilds,
-    };
+    use crate::{candidate::SearchCandidate, cli::Target, product, team_city, Client};
 
     #[tokio::test]
     async fn tets_candidates() {
@@ -722,7 +726,7 @@ mod tests {
 
         let vv = c.get_valid_repositories_for_platform();
 
-        match get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
+        match team_city::get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -746,7 +750,7 @@ mod tests {
 
         let vv = c.get_valid_repositories_for_platform();
 
-        match get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
+        match team_city::get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -771,7 +775,7 @@ mod tests {
 
         let vv = c.get_valid_repositories_for_platform();
 
-        match get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
+        match team_city::get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -801,7 +805,7 @@ mod tests {
 
         let vv = c.get_valid_repositories_for_platform();
 
-        match get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
+        match team_city::get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
             Ok(s) => {
                 assert!(
                     s.is_none(),
@@ -947,7 +951,7 @@ mod tests {
             "count": 1
         }"#;
 
-        let val = serde_json::from_str::<TeamCityArtifacts>(r);
+        let val = serde_json::from_str::<team_city::TeamCityArtifacts>(r);
         assert!(val.is_ok());
     }
 
@@ -962,7 +966,7 @@ mod tests {
             }
         }"#;
 
-        let val = serde_json::from_str::<TeamCityBuild>(r);
+        let val = serde_json::from_str::<team_city::TeamCityBuild>(r);
         assert!(val.is_ok());
     }
 
@@ -982,7 +986,7 @@ mod tests {
             ]
         }"#;
 
-        let val = serde_json::from_str::<TeamCityBuilds>(r);
+        let val = serde_json::from_str::<team_city::TeamCityBuilds>(r);
         assert!(val.is_ok());
     }
 
@@ -1005,7 +1009,7 @@ mod tests {
 			}
 		}"#;
 
-        let val = serde_json::from_str::<TeamCityBranch>(r);
+        let val = serde_json::from_str::<team_city::TeamCityBranch>(r);
         println!("{:#?}", val);
         assert!(val.is_ok());
     }
@@ -1018,12 +1022,12 @@ mod tests {
 
         let c = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
 
-        let with_build_id = get_with_build_id_by_candidate(&client.http_client, &c, &vv)
+        let with_build_id = team_city::get_with_build_id_by_candidate(&client.http_client, &c, &vv)
             .await
             .expect("expected to get build id during test for develop hubkit install")
             .expect("Expected build id to exist");
 
-        let _ = download_artifact(
+        let _ = team_city::download_artifact(
             &client.http_client,
             &with_build_id.0,
             &with_build_id.1,
