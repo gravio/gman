@@ -26,10 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match &cli.command {
         /* List */
         Some(Commands::Cache { clear, list: _ }) => {
-            let c = Client::load().expect("Couldnt load client");
+            let client = Client::load().expect("Couldnt load client");
 
             if *clear {
-                match c.clear_cache() {
+                match client.clear_cache() {
                     Ok(_) => {
                         println!("Cleared cache");
                         exit(0)
@@ -42,12 +42,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             } else {
                 println!(
                     "Cache Directory: {}",
-                    c.config.cache_directory.to_str().unwrap()
+                    client.config.cache_directory.to_str().unwrap()
                 );
-                match c.list_cache() {
+                match client.list_cache() {
                     Some(items) => {
                         println!("Content Count: {}", items.len());
-                        c.format_candidate_table(items, false, false);
+                        client.format_candidate_table(items, false, false);
                     }
                     None => {
                         println!("Nothing in cache");
@@ -57,12 +57,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             exit(0);
         }
         Some(Commands::List { show_installed }) => {
-            let c = Client::load().expect("Couldnt load client");
-            let mut candidates = c
+            let client = Client::load().expect("Couldnt load client");
+            let mut candidates = client
                 .list_candidates(None, None)
                 .await
                 .expect("Failed to load candidates");
-            let installed_candidates = c.get_installed();
+            let installed_candidates = client.get_installed();
             for installed in &installed_candidates {
                 /* Keep Candidate in list if...
                  *   - not installed at all, or
@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     }
                 }
             }
-            c.format_candidate_table(candidates, *show_installed, true);
+            client.format_candidate_table(candidates, *show_installed, true);
             exit(0)
         }
         /* Uninstall */
@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             flavor,
             automatic_upgrade,
         }) => {
-            let c = Client::load().expect("Couldnt load client");
+            let client = Client::load().expect("Couldnt load client");
 
             /* find product */
             let target: Target = match build_or_branch {
@@ -131,6 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     Target::Version(_) => None,
                 },
                 flavor.as_ref().map(|x| x.as_str()),
+                &client.config.products,
             );
 
             match candidate {
@@ -139,9 +140,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         "Installing {}@{}, flavor {}",
                         name,
                         target.to_string(),
-                        candidate.flavor.name,
+                        candidate.flavor.id,
                     );
-                    c.install(&candidate, automatic_upgrade.to_owned())
+                    client
+                        .install(&candidate, automatic_upgrade.to_owned())
                         .await
                         .expect("Failed to install item");
                     println!("Successfully Installed {}", candidate.product_name);
@@ -154,9 +156,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
         Some(Commands::Installed) => {
-            let c = Client::load().expect("Couldnt load client");
-            let candidates = c.get_installed();
-            c.format_candidate_table(candidates, false, false);
+            let client = Client::load().expect("Couldnt load client");
+            let candidates = client.get_installed();
+            client.format_candidate_table(candidates, false, false);
             exit(0)
         }
         None => {

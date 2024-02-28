@@ -38,7 +38,7 @@ impl Into<TablePrinter> for InstallationCandidate {
             identifier: self.identifier.to_owned(),
             name: self.product_name.to_owned(),
             version: self.version.into(),
-            flavor: self.flavor.name.to_owned(),
+            flavor: self.flavor.id.to_owned(),
             installed: self.installed,
         }
     }
@@ -84,9 +84,10 @@ impl SearchCandidate {
         version: Option<&str>,
         identifier: Option<&str>,
         flavor: Option<&str>,
+        available_products: &Vec<Product>,
     ) -> Option<SearchCandidate> {
         let product_lower = product_name.to_lowercase();
-        let product = match product::ALL_PRODUCTS
+        let product = match available_products
             .iter()
             .find(|m| m.name.to_lowercase() == product_lower)
         {
@@ -101,7 +102,7 @@ impl SearchCandidate {
                 product
                     .flavors
                     .iter()
-                    .find(|x| x.name.to_lowercase() == flavor_lower)
+                    .find(|x| x.id.to_lowercase() == flavor_lower)
             }
             None => product
                 .flavors
@@ -250,7 +251,7 @@ impl InstallationCandidate {
 
     /// Returns the file name of the file this InstallationCandidate represents
     pub fn get_binary_file_name(&self) -> String {
-        PathBuf::from_str(&self.flavor.teamcity_metadata.teamcity_executable_path)
+        PathBuf::from_str(&self.flavor.teamcity_metadata.teamcity_binary_path)
             .unwrap()
             .file_name()
             .unwrap()
@@ -268,7 +269,7 @@ impl InstallationCandidate {
             "{}@{}@{}@{}@{}@{}",
             &self.product_name,
             &self.flavor.platform,
-            &self.flavor.name,
+            &self.flavor.id,
             &self.identifier,
             &self.version,
             &self.get_binary_file_name()
@@ -414,7 +415,7 @@ impl FromStr for InstallationCandidate {
         let identifier = splits[3];
         let version = splits[4];
 
-        let product = Product::from_name(product_name);
+        let product = Product::from_name(product_name, &Vec::new());
         if let None = product {
             return Err(GManError::new(
                 "Failed to extract product from InstallationCandidate FromStr",
@@ -425,7 +426,7 @@ impl FromStr for InstallationCandidate {
         let flavor = product
             .flavors
             .iter()
-            .find(|x| x.name.to_lowercase() == flavor_str.to_lowercase());
+            .find(|x| x.id.to_lowercase() == flavor_str.to_lowercase());
 
         if let None = flavor {
             return Err(GManError::new(

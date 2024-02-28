@@ -18,10 +18,6 @@ pub struct Client {
     http_client: reqwest::Client,
 }
 impl Client {
-    // fn f() {
-    //     let valid_repositories = self.get_valid_repositories_for_platform();
-    //     let result = get_build_id_by_candidate(&http_client, search, &valid_repositories).await?;
-    // }
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let client_config = Client::load_config()?;
         app::init_logging();
@@ -391,7 +387,7 @@ impl Client {
 
         /* Sort the candidates, in preference of Flavor, Version, Identifier */
         found_candidates.sort_by(|a, b| {
-            let cmp_flavor = a.flavor.name.cmp(&b.flavor.name);
+            let cmp_flavor = a.flavor.id.cmp(&b.flavor.id);
 
             if cmp_flavor == std::cmp::Ordering::Equal {
                 let cmp_version = b
@@ -419,7 +415,7 @@ impl Client {
         found_candidates.retain(|x| {
             (x.flavor.platform == search.flavor.platform)
                 && (x.product_name.to_lowercase() == search.product_name.to_lowercase()
-                    && x.flavor.name.to_lowercase() == search.flavor.name.to_lowercase())
+                    && x.flavor.id.to_lowercase() == search.flavor.id.to_lowercase())
         });
 
         for found in found_candidates.into_iter() {
@@ -683,50 +679,73 @@ mod tests {
 
     #[tokio::test]
     async fn tets_candidates() {
-        let c = Client::load().expect("Failed to load client");
-        let candidates = c.list_candidates(None, None).await.unwrap();
+        let client = Client::load().expect("Failed to load client");
+        let candidates = client.list_candidates(None, None).await.unwrap();
         assert!(!candidates.is_empty());
         println!("lmao");
     }
 
     #[test]
     fn test_get_installed() {
-        let c = Client::load().expect("Failed to load client");
-        let installed = c.get_installed();
+        let client = Client::load().expect("Failed to load client");
+        let installed = client.get_installed();
         assert!(!installed.is_empty())
     }
 
     #[tokio::test]
     async fn test_install_with_cache() {
         let p = &product::PRODUCT_GRAVIO_STUDIO;
-        let search = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
 
-        let res = c.install(&search, None).await;
+        let search = SearchCandidate::new(
+            &p.name,
+            None,
+            Some("develop"),
+            None,
+            &client.config.products,
+        )
+        .unwrap();
+        let res = client.install(&search, None).await;
         assert!(res.is_ok())
     }
 
     #[tokio::test]
     async fn test_install_force_with_cache() {
         let p = &product::PRODUCT_GRAVIO_STUDIO;
-        let search = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
 
-        let res = c.install(&search, Some(true)).await;
+        let search = SearchCandidate::new(
+            &p.name,
+            None,
+            Some("develop"),
+            None,
+            &client.config.products,
+        )
+        .unwrap();
+
+        let res = client.install(&search, Some(true)).await;
         assert!(res.is_ok())
     }
 
     #[tokio::test]
     async fn test_get_build_id_specific_version() {
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
-        let candidate =
-            SearchCandidate::new(p.name, Some("5.2.0-7015"), None, Some("WindowsHubkit")).unwrap();
 
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
 
-        let vv = c.get_valid_repositories_for_platform();
+        let candidate = SearchCandidate::new(
+            &p.name,
+            Some("5.2.0-7015"),
+            None,
+            Some("WindowsHubkit"),
+            &client.config.products,
+        )
+        .unwrap();
 
-        match team_city::get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
+        let vv = client.get_valid_repositories_for_platform();
+
+        match team_city::get_with_build_id_by_candidate(&client.http_client, &candidate, &vv).await
+        {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -744,13 +763,21 @@ mod tests {
     #[tokio::test]
     async fn get_build_id_by_identifier_name() {
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
-        let candidate = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
+        let client = Client::load().expect("Failed to load client");
 
-        let c = Client::load().expect("Failed to load client");
+        let candidate = SearchCandidate::new(
+            &p.name,
+            None,
+            Some("develop"),
+            None,
+            &client.config.products,
+        )
+        .unwrap();
 
-        let vv = c.get_valid_repositories_for_platform();
+        let vv = client.get_valid_repositories_for_platform();
 
-        match team_city::get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
+        match team_city::get_with_build_id_by_candidate(&client.http_client, &candidate, &vv).await
+        {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -768,14 +795,22 @@ mod tests {
     #[tokio::test]
     async fn get_build_id_by_version() {
         let p = &product::PRODUCT_HANDBOOK_X;
-        let candidate =
-            SearchCandidate::new(p.name, Some("1.0.1656.0"), None, Some("Windows")).unwrap();
 
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
 
-        let vv = c.get_valid_repositories_for_platform();
+        let candidate = SearchCandidate::new(
+            &p.name,
+            Some("1.0.1656.0"),
+            None,
+            Some("Windows"),
+            &client.config.products,
+        )
+        .unwrap();
 
-        match team_city::get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
+        let vv = client.get_valid_repositories_for_platform();
+
+        match team_city::get_with_build_id_by_candidate(&client.http_client, &candidate, &vv).await
+        {
             Ok(s) => match s {
                 None => {
                     assert!(false, "Expected results, but got empty")
@@ -793,19 +828,22 @@ mod tests {
     #[tokio::test]
     async fn get_build_id_by_no_results() {
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
+
+        let client = Client::load().expect("Failed to load client");
+
         let candidate = SearchCandidate::new(
-            p.name,
+            &p.name,
             None,
             Some("1a361e15-27e2-48b1-bc8b-054d9ab8c435"),
             None,
+            &client.config.products,
         )
         .unwrap();
 
-        let c = Client::load().expect("Failed to load client");
+        let vv = client.get_valid_repositories_for_platform();
 
-        let vv = c.get_valid_repositories_for_platform();
-
-        match team_city::get_with_build_id_by_candidate(&c.http_client, &candidate, &vv).await {
+        match team_city::get_with_build_id_by_candidate(&client.http_client, &candidate, &vv).await
+        {
             Ok(s) => {
                 assert!(
                     s.is_none(),
@@ -820,11 +858,11 @@ mod tests {
 
     #[tokio::test]
     async fn install_hubkit_non_existant() {
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
         let target: Target = Target::Identifier("lmao".to_owned());
 
         let candidate = SearchCandidate::new(
-            product::PRODUCT_GRAVIO_HUBKIT.name,
+            &product::PRODUCT_GRAVIO_HUBKIT.name,
             match &target {
                 Target::Identifier(x) => Some(x.as_str()),
                 Target::Version(x) => Some(x.as_str()),
@@ -834,21 +872,23 @@ mod tests {
                 Target::Version(x) => Some(x.as_str()),
             },
             None,
+            &client.config.products,
         )
         .unwrap();
 
-        c.install(&candidate, Some(false))
+        client
+            .install(&candidate, Some(false))
             .await
             .expect("Failed to install item");
     }
 
     #[tokio::test]
     async fn install_hubkit_develop() {
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
         let target: Target = Target::Identifier("develop".to_owned());
 
         let candidate = SearchCandidate::new(
-            product::PRODUCT_GRAVIO_HUBKIT.name,
+            &product::PRODUCT_GRAVIO_HUBKIT.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),
@@ -858,21 +898,23 @@ mod tests {
                 Target::Version(_) => None,
             },
             None,
+            &client.config.products,
         )
         .unwrap();
 
-        c.install(&candidate, Some(false))
+        client
+            .install(&candidate, Some(false))
             .await
             .expect("Failed to install item");
     }
 
     #[tokio::test]
     async fn install_hubkit_specific_version() {
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
         let target: Target = Target::Version("5.2.1-7049".to_owned());
 
         let candidate = SearchCandidate::new(
-            product::PRODUCT_GRAVIO_HUBKIT.name,
+            &product::PRODUCT_GRAVIO_HUBKIT.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),
@@ -882,21 +924,23 @@ mod tests {
                 Target::Version(_) => None,
             },
             None,
+            &client.config.products,
         )
         .unwrap();
 
-        c.install(&candidate, Some(false))
+        client
+            .install(&candidate, Some(false))
             .await
             .expect("Failed to install item");
     }
 
     #[tokio::test]
     async fn install_studio_specific_version() {
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
         let target: Target = Target::Version("5.2.4683".to_owned());
 
         let candidate = SearchCandidate::new(
-            product::PRODUCT_GRAVIO_STUDIO.name,
+            &product::PRODUCT_GRAVIO_STUDIO.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),
@@ -906,21 +950,23 @@ mod tests {
                 Target::Version(_) => None,
             },
             None,
+            &client.config.products,
         )
         .unwrap();
 
-        c.install(&candidate, Some(false))
+        client
+            .install(&candidate, Some(false))
             .await
             .expect("Failed to install item");
     }
 
     #[tokio::test]
     async fn install_handbookx_specific_version() {
-        let c = Client::load().expect("Failed to load client");
+        let client = Client::load().expect("Failed to load client");
         let target: Target = Target::Version("1.0.1656.0".to_owned());
 
         let candidate = SearchCandidate::new(
-            product::PRODUCT_HANDBOOK_X.name,
+            &product::PRODUCT_HANDBOOK_X.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),
@@ -930,10 +976,12 @@ mod tests {
                 Target::Version(_) => None,
             },
             None,
+            &client.config.products,
         )
         .unwrap();
 
-        c.install(&candidate, Some(false))
+        client
+            .install(&candidate, Some(false))
             .await
             .expect("Failed to install item");
     }
@@ -1020,7 +1068,14 @@ mod tests {
         let vv = client.get_valid_repositories_for_platform();
         let p = &product::PRODUCT_GRAVIO_HUBKIT;
 
-        let c = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
+        let c = SearchCandidate::new(
+            &p.name,
+            None,
+            Some("develop"),
+            None,
+            &client.config.products,
+        )
+        .unwrap();
 
         let with_build_id = team_city::get_with_build_id_by_candidate(&client.http_client, &c, &vv)
             .await

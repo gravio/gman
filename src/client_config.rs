@@ -3,7 +3,7 @@ use std::{borrow::Cow, env, fs, path::PathBuf, str::FromStr};
 use lazy_static::lazy_static;
 use serde::Deserialize;
 
-use crate::{app, platform::Platform};
+use crate::{app, platform::Platform, product::Product};
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct PublisherIdentity {
@@ -109,9 +109,16 @@ pub(crate) struct ClientConfig {
     /// Publisher keys to be aware of when searching for uninstallation material on the local machine
     #[serde(rename = "PublisherIdentities", default = "default_empty_publisher")]
     pub publisher_identities: Vec<PublisherIdentity>,
+
+    #[serde(rename = "Products", default = "default_empty_products")]
+    pub products: Vec<Product>,
 }
 
 pub const fn default_empty_publisher() -> Vec<PublisherIdentity> {
+    Vec::new()
+}
+
+pub const fn default_empty_products() -> Vec<Product> {
     Vec::new()
 }
 

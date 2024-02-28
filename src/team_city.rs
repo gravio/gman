@@ -127,7 +127,7 @@ pub async fn get_builds<'a>(
                     .filter(|x| x.platform == current_platform);
 
                 for flavor in flavors {
-                    log::debug!("Getting build for flavor {}", &flavor.name);
+                    log::debug!("Getting build for flavor {}", &flavor.id);
                     let mut url = ensure_scheme(&repo_url)?;
                     url.set_path(&format!(
                         "app/rest/buildTypes/id:{}/branches",
@@ -345,7 +345,7 @@ pub async fn download_artifact<'a>(
             u,
             candidate.flavor.teamcity_metadata.teamcity_id,
             candidate.remote_id,
-            candidate.flavor.teamcity_metadata.teamcity_executable_path
+            candidate.flavor.teamcity_metadata.teamcity_binary_path
         );
 
         let url = ensure_scheme(&uri_str)?;

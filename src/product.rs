@@ -7,7 +7,9 @@ use crate::{gman_error::GManError, platform::Platform};
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct Product {
-    pub name: &'static str,
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "Flavors")]
     pub flavors: Vec<Flavor>,
 }
 
@@ -94,15 +96,21 @@ impl FromStr for PackageType {
 }
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct TeamCityMetadata {
-    pub teamcity_id: &'static str,
-    pub teamcity_executable_path: &'static str,
+    #[serde(rename = "TeamCityId")]
+    pub teamcity_id: String,
+    #[serde(rename = "TeamCityBinaryPath")]
+    pub teamcity_binary_path: String,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct Flavor {
+    #[serde(rename = "Platform")]
     pub platform: Platform,
-    pub name: &'static str,
+    #[serde(rename = "Id")]
+    pub id: String,
+    #[serde(rename = "TeamCityMetadata")]
     pub teamcity_metadata: TeamCityMetadata,
+    #[serde(rename = "PackageType")]
     pub package_type: PackageType,
 }
 
@@ -110,18 +118,18 @@ impl Flavor {
     pub fn empty() -> Self {
         Self {
             platform: Platform::platform_for_current_platform().unwrap(),
-            name: "--",
+            id: "--".to_owned(),
             package_type: PackageType::Msi,
             teamcity_metadata: TeamCityMetadata {
-                teamcity_id: "--",
-                teamcity_executable_path: "--",
+                teamcity_id: "--".to_owned(),
+                teamcity_binary_path: "--".to_owned(),
             },
         }
     }
 }
 
 impl Product {
-    pub fn from_name<'a>(product_name: &'_ str) -> Option<&'a Self> {
+    pub fn from_name<'a>(product_name: &'_ str, products: &Vec<Product>) -> Option<&'a Self> {
         match product_name.to_lowercase().trim() {
             "graviostudio" => Some(&PRODUCT_GRAVIO_STUDIO),
             "sensormap" => Some(&PRODUCT_GRAVIO_SENSOR_MAP),
@@ -137,46 +145,46 @@ impl Product {
 lazy_static! {
     /* Gravio Studio */
      pub static ref PRODUCT_GRAVIO_STUDIO: Product = Product {
-        name: "GravioStudio",
+        name: "GravioStudio".to_owned(),
         flavors: vec![
             Flavor {
                 platform: Platform::Windows,
-                name: "WindowsAppStore",
+                id: "WindowsAppStore".to_owned(),
                 package_type: PackageType::AppX,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Gravio_GravioStudio4forWindows",
-                    teamcity_executable_path: "graviostudio.zip",
+                    teamcity_id: "Gravio_GravioStudio4forWindows".to_owned(),
+                    teamcity_binary_path: "graviostudio.zip".to_owned(),
                     },
 
             },
             Flavor {
                 platform: Platform::Windows,
-                name: "Sideloading",
+                id: "Sideloading".to_owned(),
                 package_type: PackageType::AppX,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Gravio_GravioStudio4forWindows",
-                    teamcity_executable_path: "graviostudio_sideloading.zip",
+                    teamcity_id: "Gravio_GravioStudio4forWindows".to_owned(),
+                    teamcity_binary_path: "graviostudio_sideloading.zip".to_owned(),
                     },
 
             },
             Flavor {
                 platform: Platform::Mac,
-                name: "DeveloperId",
+                id: "DeveloperId".to_owned(),
                 package_type: PackageType::Dmg,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Gravio_GravioStudio4ForMac",
-                    teamcity_executable_path: "developerid/GravioStudio.dmg",
+                    teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
+                    teamcity_binary_path: "developerid/GravioStudio.dmg".to_owned(),
                     },
 
 
             },
             Flavor {
                 platform: Platform::Mac,
-                name: "AppStore",
+                id: "MacAppStore".to_owned(),
                 package_type: PackageType::Pkg,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Gravio_GravioStudio4ForMac",
-                    teamcity_executable_path: "appstore/Gravio Studio.pkg",
+                    teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
+                    teamcity_binary_path: "appstore/Gravio Studio.pkg".to_owned(),
                     },
 
             }
@@ -185,22 +193,22 @@ lazy_static! {
 
     /* gsm */
      pub static ref PRODUCT_GRAVIO_SENSOR_MAP: Product = Product {
-        name: "SensorMap",
+        name: "SensorMap".to_owned(),
         flavors: Vec::new(),
     };
 
 
     /* Monitor */
      pub static ref PRODUCT_GRAVIO_MONITOR: Product = Product {
-        name: "Monitor",
+        name: "Monitor".to_owned(),
         flavors: vec![
             Flavor {
                 platform: Platform::Android,
-                name: "GoogleAppStore",
+                id: "GoogleAppStore".to_owned(),
                 package_type:PackageType::Apk,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Gravio_GravioMonitor",
-                    teamcity_executable_path: "",
+                    teamcity_id: "Gravio_GravioMonitor".to_owned(),
+                    teamcity_binary_path: "".to_owned(),
                     },
 
             }
@@ -209,25 +217,25 @@ lazy_static! {
 
     /* Update Manager */
      pub static ref PRODUCT_GRAVIO_UPDATE_MANAGER: Product = Product {
-        name: "UpdateManager",
+        name: "UpdateManager".to_owned(),
         flavors: vec![
             Flavor{
                 platform: Platform::Windows,
-                name: "WindowsUpdateManagerExe",
+                id: "WindowsUpdateManagerExe".to_owned(),
                 package_type: PackageType::StandaloneExe,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_executable_path: "UpdateManager/build/win/ConfigurationManager.exe",
-                    teamcity_id: "Gravio_UpdateManager",
+                    teamcity_binary_path: "UpdateManager/build/win/ConfigurationManager.exe".to_owned(),
+                    teamcity_id: "Gravio_UpdateManager".to_owned(),
                     },
 
             },
             Flavor{
                 platform: Platform::Mac,
-                name: "MacUpdateManagerDmg",
+                id: "MacUpdateManagerDmg".to_owned(),
                 package_type: PackageType::Dmg,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_executable_path: "UpdateManager/build/macOS/ConfigurationManager",
-                    teamcity_id: "Gravio_UpdateManager4",
+                    teamcity_binary_path: "UpdateManager/build/macOS/ConfigurationManager".to_owned(),
+                    teamcity_id: "Gravio_UpdateManager4".to_owned(),
                     },
 
             }
@@ -235,24 +243,24 @@ lazy_static! {
     };
     /* HubKit */
      pub static ref PRODUCT_GRAVIO_HUBKIT: Product = Product {
-        name: "HubKit",
+        name: "HubKit".to_owned(),
         flavors: vec![
             Flavor{
                 platform: Platform::Windows,
-                name: "WindowsHubkit",
+                id: "WindowsHubkit".to_owned(),
                 package_type: PackageType::Msi,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Gravio_GravioHubKit4",
-                    teamcity_executable_path: "GravioHubKit.msi",
+                    teamcity_id: "Gravio_GravioHubKit4".to_owned(),
+                    teamcity_binary_path: "GravioHubKit.msi".to_owned(),
                     },
             },
             Flavor{
                 platform: Platform::Mac,
-                name: "MacHubkit",
+                id: "MacHubkit".to_owned(),
                 package_type: PackageType::Dmg,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Gravio_UpdateManager4",
-                    teamcity_executable_path: "GravioHubKit.dmg",
+                    teamcity_id: "Gravio_GravioHubKit4".to_owned(),
+                    teamcity_binary_path: "GravioHubKit.dmg".to_owned(),
                     },
 
             },
@@ -261,44 +269,37 @@ lazy_static! {
     };
 
     pub static ref PRODUCT_HANDBOOK_X: Product = Product {
-        name: "HandbookX",
+        name: "HandbookX".to_owned(),
         flavors: vec![
             Flavor {
                 platform: Platform::Windows,
-                name: "Windows",
+                id: "Windows".to_owned(),
                 package_type: PackageType::MsiX,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Hubble_HubbleForWindows10",
-                    teamcity_executable_path: "handbookx.msix",
+                    teamcity_id: "Hubble_HubbleForWindows10".to_owned(),
+                    teamcity_binary_path: "handbookx.msix".to_owned(),
                     },
             },
             Flavor {
                 platform: Platform::Windows,
-                name: "Sideloading",
+                id: "Sideloading".to_owned(),
                 package_type: PackageType::MsiX,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Hubble_HubbleForWindows10",
-                    teamcity_executable_path: "sideloadinghandbookx.msix",
+                    teamcity_id: "Hubble_HubbleForWindows10".to_owned(),
+                    teamcity_binary_path: "sideloadinghandbookx.msix".to_owned(),
                     },
             },
             Flavor {
                 platform: Platform::Android,
-                name: "Android",
+                id: "Android".to_owned(),
                 package_type: PackageType::Apk,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_id: "Hubble_2_HubbleFlutter",
-                    teamcity_executable_path: "handbookx-release.apk",
+                    teamcity_id: "Hubble_2_HubbleFlutter".to_owned(),
+                    teamcity_binary_path: "handbookx-release.apk".to_owned(),
                     },
             },
         ],
     };
 
-    pub static ref ALL_PRODUCTS: Vec<&'static Product> = vec![
-        &PRODUCT_GRAVIO_HUBKIT,
-        &PRODUCT_GRAVIO_MONITOR,
-        &PRODUCT_GRAVIO_STUDIO,
-        &PRODUCT_GRAVIO_SENSOR_MAP,
-        &PRODUCT_GRAVIO_UPDATE_MANAGER,
-        &PRODUCT_HANDBOOK_X,
-    ];
+
 }
