@@ -69,14 +69,27 @@ impl Display for Platform {
 impl Platform {
     /// If this binary is executing on windows, returns Windows; if Mac, returns Mac; otherwise, returns [None]
     pub fn platform_for_current_platform() -> Option<Self> {
-        if cfg!(windows) {
-            Some(Platform::Windows)
-        } else if cfg!(macos) {
-            Some(Platform::Mac)
-        } else if cfg!(linux) {
-            Some(Platform::Linux)
-        } else {
-            None
+        #[cfg(target_os = "windows")]
+        {
+            return Some(Platform::Windows);
         }
+        #[cfg(target_os = "macos")]
+        {
+            return Some(Platform::Mac);
+        }
+        #[cfg(target_os = "linux")]
+        {
+            return Some(Platform::Linux);
+        }
+        #[cfg(target_os = "android")]
+        {
+            return Some(Platform::Android);
+        }
+        #[cfg(target_os = "ios")]
+        {
+            return Some(Platform::IOS);
+        }
+        None
+
     }
 }

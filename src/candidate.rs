@@ -455,10 +455,10 @@ pub struct InstalledProduct {
     pub version: Version,
 
     pub package_name: String,
-
     pub package_type: PackageType,
 }
 
+#[cfg(target_os= "windows")]
 impl From<InstalledAppXProduct> for InstalledProduct {
     fn from(value: InstalledAppXProduct) -> Self {
         InstalledProduct {
