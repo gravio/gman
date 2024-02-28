@@ -23,7 +23,7 @@ impl<'de> Deserialize<'de> for Platform {
 
         match value {
             serde_json::Value::String(val) => {
-                let result = Platform::from_str(&val).map_err(|x| {
+                let result = Platform::from_str(&val).map_err(|_| {
                     serde::de::Error::invalid_value(
                         serde::de::Unexpected::Str(&val),
                         &"one of {windows, macos, rpi, linux, android, ios}",

@@ -188,8 +188,9 @@ pub async fn get_builds<'a>(
                         }
                         Err(e) => {
                             log::error!(
-                                "Failed to parse TeamCity repository information for repo {}",
-                                &repo_url
+                                "Failed to parse TeamCity repository information for repo {}: {}",
+                                &repo_url,
+                                e,
                             );
                         }
                     }

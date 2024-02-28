@@ -58,7 +58,7 @@ impl<'de> Deserialize<'de> for PackageType {
 
         match value {
             serde_json::Value::String(val) => {
-                let result = PackageType::from_str(&val).map_err(|x| {
+                let result = PackageType::from_str(&val).map_err(|_| {
                     serde::de::Error::invalid_value(
                         serde::de::Unexpected::Str(&val),
                         &"one of {appx, msi, msix, dmg, pkg, deb, apk, ipa, standaloneexe}",

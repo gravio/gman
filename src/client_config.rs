@@ -1,4 +1,4 @@
-use std::{borrow::Cow, env, fmt::Display, fs, path::PathBuf, str::FromStr};
+use std::{borrow::Cow, env, fs, path::PathBuf, str::FromStr};
 
 use lazy_static::lazy_static;
 use serde::Deserialize;

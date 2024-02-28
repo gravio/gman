@@ -2,8 +2,6 @@ use std::path::PathBuf;
 
 use log::Log;
 
-pub const APP_ID: &'static str = "5a8f853f-d7e7-4a83-aa21-6ed0585b0c40";
-
 pub const APP_FOLDER_NAME: &'static str = "gman_5a8f853f-d7e7-4a83-aa21-6ed0585b0c40";
 
 pub fn get_app_temp_directory() -> PathBuf {

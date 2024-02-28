@@ -1,6 +1,4 @@
 use std::fs;
-use std::ops::Deref;
-use std::path::Path;
 use std::str::FromStr as _;
 
 use std::{fs::File, io::BufReader, process::Command};
@@ -674,12 +672,9 @@ impl Client {
 #[cfg(test)]
 mod tests {
 
-    use hyper::Version;
-
     use crate::{
-        app, candidate::SearchCandidate, cli::Target, download_artifact,
-        get_with_build_id_by_candidate, product, Client, TeamCityArtifacts, TeamCityBranch,
-        TeamCityBuild, TeamCityBuilds,
+        candidate::SearchCandidate, cli::Target, download_artifact, get_with_build_id_by_candidate,
+        product, Client, TeamCityArtifacts, TeamCityBranch, TeamCityBuild, TeamCityBuilds,
     };
 
     #[tokio::test]

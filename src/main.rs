@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     match &cli.command {
         /* List */
-        Some(Commands::Cache { clear, list }) => {
+        Some(Commands::Cache { clear, list: _ }) => {
             let c = Client::load().expect("Couldnt load client");
 
             if *clear {
