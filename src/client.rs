@@ -1,15 +1,13 @@
-use std::{env, fs};
 use std::str::FromStr as _;
+use std::{env, fs};
 
 use std::{fs::File, io::BufReader, process::Command};
 
+#[cfg(target_os = "windows")]
+use crate::candidate::InstalledAppXProduct;
 use crate::candidate::{
-    InstallationCandidate,
-    InstalledProduct, SearchCandidate, TablePrinter,
-    Version,
+    InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter, Version,
 };
-#[cfg(target_os= "windows")]
-use crate::InstalledAppXProduct;
 
 use crate::gman_error::GManError;
 use crate::platform::Platform;
@@ -461,9 +459,9 @@ impl Client {
         #[cfg(target_os = "macos")]
         {
             let candidates = self
-            .get_installed_mac()
-            .expect("Failed to get installed gravio items");
-        candidates
+                .get_installed_mac()
+                .expect("Failed to get installed gravio items");
+            candidates
         }
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {}
@@ -474,7 +472,6 @@ impl Client {
         let mut installed: Vec<InstalledProduct> = Vec::new();
 
         Ok(installed)
-
     }
 
     #[cfg(target_os = "windows")]
