@@ -7,6 +7,7 @@ mod gman_error;
 mod platform;
 mod product;
 mod team_city;
+mod util;
 use candidate::{InstallationCandidate, Version};
 use clap::Parser;
 use cli::Commands;
@@ -25,6 +26,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     match &cli.command {
         /* List */
+        Some(Commands::Cache { clear, list }) => {
+            let c = Client::load().expect("Couldnt load client");
+
+            if *clear {
+                match c.clear_cache() {
+                    Ok(_) => {
+                        println!("Cleared cache");
+                        exit(0)
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to clear cache: {}", e);
+                        exit(1);
+                    }
+                }
+            } else {
+                println!(
+                    "Cache Directory: {}",
+                    c.config.cache_directory.to_str().unwrap()
+                );
+                match c.list_cache() {
+                    Some(items) => {
+                        println!("Content Count: {}", items.len());
+                        c.format_candidate_table(items, false, false);
+                    }
+                    None => {
+                        println!("Nothing in cache");
+                    }
+                }
+            }
+            exit(0);
+        }
         Some(Commands::List { show_installed }) => {
             let c = Client::load().expect("Couldnt load client");
             let mut candidates = c

@@ -1,4 +1,6 @@
 use std::fs;
+use std::ops::Deref;
+use std::path::Path;
 use std::str::FromStr as _;
 
 use std::{fs::File, io::BufReader, process::Command};
@@ -10,7 +12,7 @@ use crate::candidate::{
 use crate::gman_error::GManError;
 use crate::platform::Platform;
 use crate::{
-    app, download_artifact, get_builds, get_with_build_id_by_candidate, product,
+    app, download_artifact, get_builds, get_with_build_id_by_candidate, product, util,
     CandidateRepository, ClientConfig,
 };
 
@@ -212,6 +214,16 @@ impl Client {
         match get_with_build_id_by_candidate(&self.http_client, search, &valid_repositories).await {
             Ok(res) => match res {
                 Some(found_on_server) => {
+                    let sc = SearchCandidate {
+                        version: Some((&found_on_server.0.version).clone()),
+                        flavor: search.flavor.clone(),
+                        identifier: Some(found_on_server.0.identifier.clone()),
+                        product_name: search.product_name.clone(),
+                    };
+                    if let Some(new_found) = self.locate_in_cache(&sc) {
+                        println!("Found most recent serer build id version in cache ({}), will skip download and returning", found_on_server.0.version);
+                        return Ok(new_found);
+                    }
                     if found_on_server.0.version > cached.version {
                         println!("Found a version on the server for this identifier that is greater than the one in cache (cached: {}, found: {}), will download and install from remote", cached.version, found_on_server.0.version);
                         let found_opt = self.download(search).await?;
@@ -346,10 +358,12 @@ impl Client {
         actual_candidate.install(&binary_path)
     }
 
-    /// Attempts to locate the installer for the candiate in the local cache
-    fn locate_in_cache(&self, search: &SearchCandidate) -> Option<InstallationCandidate> {
+    pub fn list_cache(&self) -> Option<Vec<InstallationCandidate>> {
+        log::debug!(
+            "Listing contents of cache directory {}",
+            &self.config.cache_directory.to_str().unwrap()
+        );
         let mut found_candidates: Vec<InstallationCandidate> = Vec::new();
-
         match fs::read_dir(&self.config.cache_directory) {
             Ok(list_dir) => {
                 for entry_result in list_dir {
@@ -367,6 +381,8 @@ impl Client {
                 return None;
             }
         };
+
+        log::debug!("Found {} cached items", found_candidates.len());
 
         /* Sort the candidates, in preference of Flavor, Version, Identifier */
         found_candidates.sort_by(|a, b| {
@@ -387,6 +403,13 @@ impl Client {
             }
         });
 
+        Some(found_candidates)
+    }
+
+    /// Attempts to locate the installer for the candiate in the local cache
+    fn locate_in_cache(&self, search: &SearchCandidate) -> Option<InstallationCandidate> {
+        let mut found_candidates: Vec<InstallationCandidate> = self.list_cache()?;
+
         /* Drop non platform, non product items, non desired flavor items */
         found_candidates.retain(|x| {
             (x.flavor.platform == search.flavor.platform)
@@ -401,12 +424,16 @@ impl Client {
                     log::info!("Found exact version match in cache");
                     return Some(found);
                 }
+                /* Version wasnt a match, but version is mandatory. Skip. */
+                continue;
             }
             if let Some(i) = &search.identifier {
                 if i.to_lowercase() == found.identifier.to_lowercase() {
                     log::info!("Found matching identifier in cache");
                     return Some(found);
                 }
+                /* Identifier wasnt a match, but identifier is mandatory. Skip */
+                continue;
             }
             if search.version.is_none() && search.identifier.is_none() {
                 log::info!("Found matching inexact unspecified version/identifier in cache");
@@ -551,6 +578,12 @@ impl Client {
         {}
 
         Ok(installed)
+    }
+
+    pub fn clear_cache(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let path = &self.config.cache_directory;
+        log::debug!("Clearing cache directory {}", &path.to_str().unwrap());
+        util::remove_dir_contents(path)
     }
 
     /// Whether the given string is any kind of confirmation (yes, y, etc)

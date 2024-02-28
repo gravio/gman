@@ -40,6 +40,13 @@ pub enum Commands {
         )]
         automatic_upgrade: Option<bool>,
     },
+    /// Clears the cache of all matching criteria, or all of it, if nothing specified
+    Cache {
+        #[clap(short, long, help = "Whether to clear the cache")]
+        clear: bool,
+        #[clap(short, long, help = "List which candidates are cached on disk")]
+        list: bool,
+    },
     /// Lists items that are installed on this machine
     Installed,
 }
