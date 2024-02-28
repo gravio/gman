@@ -71,24 +71,25 @@ impl Platform {
     pub fn platform_for_current_platform() -> Option<Self> {
         #[cfg(target_os = "windows")]
         {
-            return Some(Platform::Windows);
+            Some(Platform::Windows)
         }
         #[cfg(target_os = "macos")]
         {
-            return Some(Platform::Mac);
+            Some(Platform::Mac)
         }
         #[cfg(target_os = "linux")]
         {
-            return Some(Platform::Linux);
+            Some(Platform::Linux)
         }
         #[cfg(target_os = "android")]
         {
-            return Some(Platform::Android);
+            Some(Platform::Android)
         }
         #[cfg(target_os = "ios")]
         {
-            return Some(Platform::IOS);
+            Some(Platform::IOS)
         }
+        #[cfg(not(any(target_os = "windows", target_os="macos", target_os = "linux", target_os = "android", target_os = "ios")))]
         None
 
     }
