@@ -214,20 +214,8 @@ impl Client {
             &search.version_or_identifier_string(),
         );
 
-        /* first uninstall old version */
-        let all_installed = &self.get_installed();
-        let already_installed = all_installed
-            .iter()
-            .find(|x| x.product_name.to_lowercase() == search.product_name.to_lowercase());
-        if let Some(already) = already_installed {
-            eprintln!("Product already installed on machine. Uninstalling before continuing...");
-            already.uninstall()?;
-            eprintln!("Successfully Uninstalled product, continuing with new installation");
-        }
-
         /* Locate the resource (check if in cache, if not, check online) */
         let cached_candidate = self.locate_in_cache(search);
-        let mut should_download = false;
 
         let actual_candidate = match cached_candidate {
             Some(cached) => {
@@ -246,7 +234,6 @@ impl Client {
                             }
                             true => {
                                 println!("A candidate for installation has been found in the local cache. Automatic upgrade is true, will attempt to find later version on build server and will use this cached item as fallback");
-                                should_download = true;
 
                                 let valid_repositories = self.get_valid_repositories_for_platform();
 
@@ -257,19 +244,28 @@ impl Client {
                                 )
                                 .await
                                 {
-                                    Ok(res) => {
-                                        match res {
-                                            Some(found_on_server) => {
-                                                // if found_on_server.0.version
-                                                todo!();
-                                                cached
-                                            }
-                                            None => {
-                                                log::info!("Repo returned correctly, but build id was not found on server. Will install from cache.");
+                                    Ok(res) => match res {
+                                        Some(found_on_server) => {
+                                            if found_on_server.0.version > cached.version {
+                                                println!("Found a version on the server for this identifier that is greater than the one in cache (cached: {}, found: {}), will download and install from remote", cached.version, found_on_server.0.version);
+                                                let found_opt = self.download(search).await?;
+                                                match found_opt {
+                                                    Some(with_id) => with_id,
+                                                    None => {
+                                                        eprintln!("Fetch request found an id on the build server but download request didn't find anything. This situation cannot be resolved by gman.");
+                                                        return Err(Box::new(GManError::new("Head fetch found id, but download found no id")));
+                                                    }
+                                                }
+                                            } else {
+                                                println!("Cache is up to date with version ({}) on server, will skip downloading and install from cache", found_on_server.0.version);
                                                 cached
                                             }
                                         }
-                                    }
+                                        None => {
+                                            log::info!("Repo returned correctly, but build id was not found on server. Will install from cache.");
+                                            cached
+                                        }
+                                    },
                                     Err(e) => {
                                         log::error!("Encountered an error when contacting repository for up to date information. Installing from cache: {}", e);
                                         eprintln!("Encountered an error when contacting repository for up to date information. Will install the cached version");
@@ -311,6 +307,24 @@ impl Client {
                 }
             }
         };
+
+        /* uninstall any previous, old versions */
+        let all_installed = &self.get_installed();
+        let already_installed = all_installed
+            .iter()
+            .find(|x| x.product_name.to_lowercase() == search.product_name.to_lowercase());
+        if let Some(already) = already_installed {
+            if already.version == actual_candidate.version {
+                eprintln!(
+                    "This version ({}) of the product is already installed on machine. Skipping.",
+                    already.version
+                );
+                return Ok(());
+            }
+            eprintln!("Product already installed on machine. Uninstalling before continuing...");
+            already.uninstall()?;
+            eprintln!("Successfully Uninstalled product, continuing with new installation");
+        }
 
         /* Launch installer */
         let binary_path = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
@@ -630,6 +644,17 @@ mod tests {
         let c = Client::load().expect("Failed to load client");
         let installed = c.get_installed();
         assert!(!installed.is_empty())
+    }
+
+    #[tokio::test]
+    async fn test_install_force_with_cache() {
+        let p = &product::PRODUCT_GRAVIO_STUDIO;
+        let search = SearchCandidate::new(p.name, None, Some("develop"), None).unwrap();
+        let c = Client::load().expect("Failed to load client");
+        let vv = c.get_valid_repositories_for_platform();
+
+        let res = c.install(&search, Some(true)).await;
+        assert!(res.is_ok())
     }
 
     #[tokio::test]

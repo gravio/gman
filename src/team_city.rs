@@ -240,14 +240,16 @@ pub async fn get_with_build_id_by_candidate<'a>(
                 .append_pair(
                     "locator",
                     &format!(
-                        "buildType:{},count:1,{},branch(policy:ALL_BRANCHES)",
+                        "buildType:{},count:1,{}",
                         &candidate.flavor.teamcity_id, &filter_for
                     ),
                 );
 
             let request: reqwest::Request = match &repo.repository_credentials {
                 Some(credentials) => {
-                    let r = http_client.get(url).header("Accept", "Application/json");
+                    let r = http_client
+                        .get(url.clone())
+                        .header("Accept", "Application/json");
                     match credentials {
                         crate::RepositoryCredentials::BearerToken { token } => {
                             r.bearer_auth(token).build().unwrap()
@@ -257,8 +259,13 @@ pub async fn get_with_build_id_by_candidate<'a>(
                         }
                     }
                 }
-                None => http_client.get(url).build().unwrap(),
+                None => http_client.get(url.clone()).build().unwrap(),
             };
+
+            log::debug!(
+                "Sending get_build_id request to repo: {}",
+                &url.clone().to_string()
+            );
 
             let res = http_client.execute(request).await?;
             let res_status = res.status();
@@ -269,8 +276,9 @@ pub async fn get_with_build_id_by_candidate<'a>(
                     eprintln!("Repository endpoint not found for repo {}", &repo.name);
                 }
                 log::warn!(
-                    "Failed to get TeamCity repository information for repo {}",
-                    &repo.name
+                    "Failed to get TeamCity repository information for repo {}, status code: {}",
+                    &repo.name,
+                    res_status
                 );
                 continue;
             }
