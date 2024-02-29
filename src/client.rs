@@ -1,6 +1,8 @@
 use std::str::FromStr as _;
 use std::{env, fs};
 
+use std::collections::HashMap;
+
 use std::{fs::File, io::BufReader, process::Command};
 
 #[cfg(target_os = "windows")]
@@ -13,6 +15,8 @@ use crate::gman_error::GManError;
 use crate::platform::Platform;
 use crate::product::Product;
 use crate::{app, product, team_city, util, CandidateRepository, ClientConfig};
+use crate::product::PackageType;
+
 
 use tabled::settings::{object::Rows, Alignment, Modify, Style};
 
@@ -484,8 +488,8 @@ impl Client {
     #[cfg(target_os = "macos")]
     fn get_running_app_pids_mac(
         &self,
-    ) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
-        let mut pid_labels: Vec<(String, String)> = Vec::new();
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let mut pid_labels: Vec<String> = Vec::new();
 
         let output = Command::new("launchctl").arg("list").output()?;
 
@@ -494,10 +498,10 @@ impl Client {
             let lines = result.split('\n');
             for line in lines {
                 let splits = line.split('\t').collect::<Vec<&str>>();
-                let pid = splits[0];
-                let label = splits[1];
-
-                pid_labels.push((pid.into(), label.into()));
+                if splits.len() > 2 {
+                let label = splits[2];
+                pid_labels.push(label.into());
+                }
             }
 
             Ok(pid_labels)
@@ -519,13 +523,13 @@ impl Client {
 
         match running_processes
             .iter()
-            .find(|x| x.1.contains(&installed.package_name))
+            .find(|x| x.contains(&installed.package_name))
         {
             Some(running) => {
-                log::debug!("Stopping application {}", running.1.as_str());
+                log::debug!("Stopping application {}", running.as_str());
                 let output = Command::new("launchctl")
                     .arg("stop")
-                    .arg(running.0.as_str())
+                    .arg(running.as_str())
                     .output()?;
 
                 // Check if the command was successful
@@ -533,9 +537,10 @@ impl Client {
                     log::debug!("Successfully stopped application");
                     Ok(())
                 } else {
+                    log::error!("Failed to stop application: {}", output.status);
                     Err(Box::new(GManError::new(&format!(
                         "Failed to kill process id {} for application {}: {}",
-                        running.0.as_str(),
+                        running.as_str(),
                         &installed.package_name,
                         &output.status,
                     ))))
@@ -553,10 +558,6 @@ impl Client {
 
     #[cfg(target_os = "macos")]
     fn get_installed_mac(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
-        use std::collections::HashMap;
-
-        use crate::product::PackageType;
-
         let mut installed: Vec<InstalledProduct> = Vec::new();
         /* list contents of /Applications */
         match fs::read_dir("/Applications") {
@@ -632,6 +633,7 @@ impl Client {
                                             package_type: PackageType::Dmg,
                                         };
 
+                                        self.shutdown_program_mac(&instaled_product);
                                         installed.push(instaled_product);
                                     }
                                 }
