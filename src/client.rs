@@ -163,6 +163,7 @@ impl Client {
                     "Found uninstallation target. Attempting to uninstall {}",
                     candidate.product_name
                 );
+                candidate.shutdown()?;
                 candidate.uninstall()?;
                 println!("Successfully uninstalled {}", &candidate.product_name);
                 Ok(())
@@ -485,76 +486,7 @@ impl Client {
         xyz.clone()
     }
 
-    #[cfg(target_os = "macos")]
-    fn get_running_app_pids_mac(
-        &self,
-    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        let mut pid_labels: Vec<String> = Vec::new();
 
-        let output = Command::new("launchctl").arg("list").output()?;
-
-        if output.status.success() {
-            let result = String::from_utf8_lossy(&output.stdout);
-            let lines = result.split('\n');
-            for line in lines {
-                let splits = line.split('\t').collect::<Vec<&str>>();
-                if splits.len() > 2 {
-                let label = splits[2];
-                pid_labels.push(label.into());
-                }
-            }
-
-            Ok(pid_labels)
-        } else {
-            Err(Box::new(GManError::new(
-                "Couldnt get PIDs for determinng running applications",
-            )))
-        }
-    }
-
-    /// shuts down a program, usually by its Identifier.
-    /// This is the first step before Uninstalling
-    #[cfg(target_os = "macos")]
-    fn shutdown_program_mac(
-        &self,
-        installed: &InstalledProduct,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let running_processes = self.get_running_app_pids_mac()?;
-
-        match running_processes
-            .iter()
-            .find(|x| x.contains(&installed.package_name))
-        {
-            Some(running) => {
-                log::debug!("Stopping application {}", running.as_str());
-                let output = Command::new("launchctl")
-                    .arg("stop")
-                    .arg(running.as_str())
-                    .output()?;
-
-                // Check if the command was successful
-                if output.status.success() {
-                    log::debug!("Successfully stopped application");
-                    Ok(())
-                } else {
-                    log::error!("Failed to stop application: {}", output.status);
-                    Err(Box::new(GManError::new(&format!(
-                        "Failed to kill process id {} for application {}: {}",
-                        running.as_str(),
-                        &installed.package_name,
-                        &output.status,
-                    ))))
-                }
-            }
-            None => {
-                log::debug!(
-                    "Tried to stop running application {}, but not found in running pids list",
-                    &installed.package_name
-                );
-                Ok(())
-            }
-        }
-    }
 
     #[cfg(target_os = "macos")]
     fn get_installed_mac(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
@@ -633,7 +565,6 @@ impl Client {
                                             package_type: PackageType::Dmg,
                                         };
 
-                                        self.shutdown_program_mac(&instaled_product);
                                         installed.push(instaled_product);
                                     }
                                 }

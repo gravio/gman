@@ -471,7 +471,19 @@ impl From<InstalledAppXProduct> for InstalledProduct {
 }
 
 impl InstalledProduct {
+
+    pub fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
+        log::debug!("Shutting down {} if running", &self.product_name);
+        
+        #[cfg(target_os = "macos")]
+         /* Shut down the running process, if any */
+         shutdown_program_mac(&self)?;
+
+        Ok(())
+    }
+
     pub fn uninstall(&self) -> Result<(), Box<dyn std::error::Error>> {
+        log::debug!("Uninstalling {}", &self.product_name);
         #[cfg(target_os = "windows")]
         if self.package_type == PackageType::AppX {
             let command = format!("Remove-AppxPackage {}", self.package_name);
@@ -509,14 +521,154 @@ impl InstalledProduct {
             ))));
         }
 
-        #[cfg(target_os = "maos")]
-        {}
-
+        #[cfg(target_os = "macos")]
+        {
+            /* Move entry in /Applications to trash */
+            if let Some(path) = get_path_to_application_mac(&self)? {
+                log::debug!("Sending {} to trash", &path.to_str().unwrap());
+                let output = Command::new("rm").arg("-r").arg(path).output()?;
+                if output.status.success() {
+                    log::debug!("Successfully removed Application to trash");
+                    return Ok(());
+                }
+                return Err(Box::new(GManError::new(
+                        &format!("Failed to remove application from /Applications directory: {}",
+                    output.status))));
+            }
+        }
         #[cfg(target_os = "linux")]
         {}
         Ok(())
     }
 }
+
+#[cfg(target_os = "macos")]
+fn get_path_to_application_mac(installed: &InstalledProduct) -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
+    use std::{collections::HashMap, fs};
+
+    /* list contents of /Applications */
+    match fs::read_dir("/Applications") {
+        Ok(list_dir) => {
+            for entry_result in list_dir {
+                if let Ok(entry) = entry_result {
+                    let path = entry.path();
+                    if entry.file_type()?.is_dir() {
+                        let app_path = path.join("Contents").join("Info.plist");
+                        match plist::from_file::<
+                            std::path::PathBuf,
+                            HashMap<String, plist::Value>,
+                        >(app_path.clone())
+                        {
+                            Ok(pl) => {
+                                let id = pl.get("CFBundleIdentifier");
+                                if id.is_none()
+                                {
+                                    log::error!("Opened plist file but didnt have CFBundleIdentifier, CFBundleExecutable,nCFBundleShortVersionString, or CFBundleVersion  keys");
+                                    continue;
+                                }
+                                let id = id.unwrap().as_string();
+                                if id.is_none()
+                                {
+                                    log::error!("CFBundleIdentifier or CDBundleExecutable were not strings");
+                                    continue;
+                                }
+                                let found_id = id.unwrap();
+
+                                if found_id == installed.package_name {
+                                    let p = path;
+                                    return Ok(Some(p.as_path().to_owned()));
+                                }
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "Failed to read contents of {}: {e}",
+                                    &app_path.to_str().unwrap()
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to read /Applications directory: {}", e);
+            return Err(Box::new(e));
+        }
+    };
+    log::debug!("No entries known for this application, may already be uninstalled");
+    Ok(None)
+}
+
+#[cfg(target_os = "macos")]
+fn get_running_app_pids_mac() -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    log::debug!("Getting running processes");
+    let mut pid_labels: Vec<String> = Vec::new();
+
+    let output = Command::new("launchctl").arg("list").output()?;
+
+    if output.status.success() {
+        let result = String::from_utf8_lossy(&output.stdout);
+        let lines = result.split('\n');
+        for line in lines {
+            let splits = line.split('\t').collect::<Vec<&str>>();
+            if splits.len() > 2 {
+            let label = splits[2];
+            pid_labels.push(label.into());
+            }
+        }
+
+        Ok(pid_labels)
+    } else {
+        Err(Box::new(GManError::new(
+            "Couldnt get PIDs for determinng running applications",
+        )))
+    }
+}
+
+
+    /// shuts down a program, usually by its Identifier.
+    /// This is the first step before Uninstalling
+    #[cfg(target_os = "macos")]
+    fn shutdown_program_mac(
+        installed: &InstalledProduct,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let running_processes = get_running_app_pids_mac()?;
+
+        match running_processes
+            .iter()
+            .find(|x| x.contains(&installed.package_name))
+        {
+            Some(running) => {
+                log::debug!("Stopping application {}", running.as_str());
+                let output = Command::new("launchctl")
+                    .arg("stop")
+                    .arg(running.as_str())
+                    .output()?;
+
+                // Check if the command was successful
+                if output.status.success() {
+                    log::debug!("Successfully stopped application");
+                    Ok(())
+                } else {
+                    log::error!("Failed to stop application: {}", output.status);
+                    Err(Box::new(GManError::new(&format!(
+                        "Failed to kill process id {} for application {}: {}",
+                        running.as_str(),
+                        &installed.package_name,
+                        &output.status,
+                    ))))
+                }
+            }
+            None => {
+                log::debug!(
+                    "Tried to stop running application {}, but not found in running pids list",
+                    &installed.package_name
+                );
+                Ok(())
+            }
+        }
+    }
 
 #[cfg(windows)]
 #[derive(Deserialize)]
