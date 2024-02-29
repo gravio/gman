@@ -199,7 +199,7 @@ impl ClientConfig {
         let expanded: Cow<str> = if cfg!(windows) {
             lazy_static! {
                 static ref ENV_VAR: regex::Regex =
-                    regex::Regex::new("%([[:word:]]*)%").expect("Invalid Regex");
+                    regex::Regex::new("%([[:word:]]*)%").expect("Failed to create Env Var regex");
             }
             let xyz =
                 ENV_VAR.replace_all(&s, |captures: &regex::Captures<'_>| match &captures[1] {

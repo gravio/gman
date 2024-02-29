@@ -1,3 +1,4 @@
+use fs_extra::dir;
 use regex::Regex;
 use serde::Deserialize;
 use std::{
@@ -162,9 +163,12 @@ impl PartialEq for Version {
 impl Eq for Version {}
 
 lazy_static! {
+    static ref MOUNTED_VOLUME_REGEX: Regex =
+    Regex::new(r"(/Volumes/.+$)").expect("Failed to create Volumes regex");
+
     static ref VERSION_REGEX: Regex =
         Regex::new(r#"^(\d{1,})(?:[.-](\d{1,}))?(?:[.-](\d{1,}))?(?:[.-](\d{1,}))?$"#)
-            .expect("Failed to create regex");
+            .expect("Failed to create Version 1 regex");
 }
 
 impl PartialOrd for Version {
@@ -394,11 +398,169 @@ impl InstallationCandidate {
         }
 
         #[cfg(target_os = "macos")]
-        {}
+        {
+            return install_mac(binary_path);
+        }
 
         #[cfg(target_os = "linux")]
         {}
         Ok(())
+    }
+}
+
+
+fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>>{
+    /* make temporary folder on system */
+    let temp_dir = {
+        let output = Command::new("mktemp")
+        .arg("-d")
+        .output()?;
+
+        // Check if the command was successful
+        if output.status.success() {
+            // Convert the output bytes to a string
+            let result = String::from_utf8_lossy(&output.stdout);
+            let result = result.to_string();
+            log::debug!("Successfully made temporary directory: {}", &result);
+            result.to_owned()
+        } else {
+            return Err(Box::new(GManError::new(
+                "Unknown error occurred while making temporary folder",
+            )));
+        }
+    };
+
+    /* mount the dmg file */
+    let mount = {
+        let output = Command::new("hdiutil")
+        .arg("attach")
+        .arg(binary_path)
+        .output()?;
+
+        // Check if the command was successful
+        if output.status.success() {
+            log::debug!("Successfully mounted dmg file");
+            // Convert the output bytes to a string
+            let result = String::from_utf8_lossy(&output.stdout);
+            let lines = result.split('\n');
+
+            let mut mount_point: Option<String> = None;
+            for line in lines {
+                let trimmed = line.trim();
+                let caps_volume: Vec<&str> = match MOUNTED_VOLUME_REGEX.captures(trimmed) {
+                    Some(c) => c,
+                    None => {
+                        continue;
+                    }
+                }
+                .iter()
+                .skip(1)
+                .filter_map(|m| m.map(|m| m.as_str()))
+                .collect();
+                mount_point = Some(caps_volume.first().unwrap().to_string());
+                break;
+            }
+            mount_point
+        } else {
+            return Err(Box::new(GManError::new(
+                "Unknown error occurred while making temporary folder",
+            )));
+        }
+    };
+
+    match mount {
+        Some(volume) => {
+            log::info!("Got mount point for application: {}", volume.as_str());
+            log::info!("Checking if mounted contents are .app or .pkg");
+
+            let is_dot_app: Option<MacPackage> = {
+                let output = Command::new("ls")
+                .arg(&volume)
+                .output()?;
+                if output.status.success() {
+                    log::debug!("ls'd mounted volume");
+                    let result = String::from_utf8_lossy(&output.stdout);
+                    let lines = result.split('\n').collect::<Vec<&str>>();
+                    let found_app = lines.iter().find(|x| x.ends_with(".app"));
+                    match found_app {
+                        Some(app_path) => {
+                            let full_path = PathBuf::from_str(&volume).unwrap().join(app_path);
+
+                            Some(MacPackage {
+                                is_app: true,
+                                is_pkg: false,
+                                path: full_path.to_str().unwrap().to_string(),
+                            })
+                        }
+                        None => {
+                            let found_pkg = lines.iter().find(|x|x.ends_with(".pkg"));
+                            match found_pkg {
+                                Some(app_path) => {
+                                    let full_path = PathBuf::from_str(&volume).unwrap().join(app_path);
+                                    Some(MacPackage {
+                                        is_app: false,
+                                        is_pkg: true,
+                                        path: full_path.to_str().unwrap().to_string(),
+                                    })
+                                }
+                                None => {
+                                    None
+                                }
+                            }
+
+                        }
+                    }
+                } else {
+                    return Err(Box::new(GManError::new(&format!("Failed to ls mounted directory: {}", output.status))))
+                }
+            };
+
+            if let Some(package) = is_dot_app {
+                if package.is_app {
+                    log::debug!("Inner contents are .app, will copy directly  from {} to /Applications", &package.path);
+                    fs_extra::copy_items(&[package.path], "/Applications", &dir::CopyOptions::new().overwrite(true))?;
+                    log::info!("Copied Application from mount to /Applications");
+                } else if package.is_pkg {
+                    log::debug!("Inner contensts are .pkg, will run dpkg installer");
+                    let output = Command::new("installer")
+                    .arg("-pkg")
+                    .arg(&volume)
+                    .arg("-target")
+                    .arg("/")
+                    .output()?;
+
+                    if output.status.success() {
+                        log::debug!("Successfully ran installer for package contents");
+                    } else {
+                        log::error!("Failed to run installer for package contents: {}", &output.status);
+                        return Err(Box::new(GManError::new(&format!("Failed to run installer for package contents: {}", &output.status))));
+                    }
+                } else {
+                    log::warn!("Mounted item but contents were neither app nor pkg");
+                }
+            } else {
+                log::warn!("Mounted item but could not extract contents");
+            }
+
+
+            let output = Command::new("hdiutil")
+            .arg("detach")
+            .arg(&volume)
+            .output()?;
+
+            if output.status.success() {
+                log::debug!("Unmounted volume at {}", volume);
+            } else {
+                log::error!("Failed to unmount volume at {}", &volume);
+                return Err(Box::new(GManError::new(&format!("Failed to unmount volume at {}", volume))));
+            }
+
+            Ok(())
+        }
+        None => {
+            log::error!("Failed to get mount point");
+            Err(Box::new(GManError::new("Failed to get mount point")))
+        }
     }
 }
 
@@ -540,6 +702,13 @@ impl InstalledProduct {
         {}
         Ok(())
     }
+}
+
+#[cfg(any(target_os="macos", target_os = "linux"))]
+struct MacPackage {
+    is_pkg: bool,
+    is_app: bool,
+    path: String,
 }
 
 #[cfg(target_os = "macos")]

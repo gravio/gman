@@ -88,7 +88,7 @@ impl FromStr for Target {
 
 lazy_static! {
     static ref VERSION_REGEX: Regex =
-        Regex::new(r"^((\d{1,}+)[.-]?)+$").expect("Failed to create regex");
+        Regex::new(r"^((\d{1,}+)[.-]?)+$").expect("Failed to create Version 2 regex");
 }
 
 #[cfg(test)]

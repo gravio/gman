@@ -562,7 +562,7 @@ impl Client {
                                                 found_version_major_minor, found_version_build
                                             )),
                                             package_name: product_identifier,
-                                            package_type: PackageType::Dmg,
+                                            package_type: PackageType::App,
                                         };
 
                                         installed.push(instaled_product);

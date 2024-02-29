@@ -24,7 +24,7 @@ pub enum PackageType {
     /// Just a direct windows executable file
     StandaloneExe,
     /// Mac installation (image)
-    Dmg,
+    App,
     /// Mac installation (zip)
     Pkg,
     /// Linux Debian package
@@ -63,7 +63,7 @@ impl<'de> Deserialize<'de> for PackageType {
                 let result = PackageType::from_str(&val).map_err(|_| {
                     serde::de::Error::invalid_value(
                         serde::de::Unexpected::Str(&val),
-                        &"one of {appx, msi, msix, dmg, pkg, deb, apk, ipa, standaloneexe}",
+                        &"one of {appx, msi, msix, app, pkg, deb, apk, ipa, standaloneexe}",
                     )
                 })?;
                 Ok(result)
@@ -85,7 +85,7 @@ impl FromStr for PackageType {
             "msi" => Ok(Self::Msi),
             "msix" => Ok(Self::MsiX),
             "standaloneexe" => Ok(Self::StandaloneExe),
-            "dmg" => Ok(Self::Dmg),
+            "app" => Ok(Self::App),
             "pkg" => Ok(Self::Pkg),
             "deb" => Ok(Self::Deb),
             "apk" => Ok(Self::Apk),
@@ -175,7 +175,7 @@ lazy_static! {
             Flavor {
                 platform: Platform::Mac,
                 id: "DeveloperId".to_owned(),
-                package_type: PackageType::Dmg,
+                package_type: PackageType::App,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
                     teamcity_binary_path: "developerid/GravioStudio.dmg".to_owned(),
@@ -244,7 +244,7 @@ lazy_static! {
             Flavor{
                 platform: Platform::Mac,
                 id: "MacUpdateManagerDmg".to_owned(),
-                package_type: PackageType::Dmg,
+                package_type: PackageType::App,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_binary_path: "UpdateManager/build/macOS/ConfigurationManager".to_owned(),
                     teamcity_id: "Gravio_UpdateManager4".to_owned(),
@@ -272,7 +272,7 @@ lazy_static! {
             Flavor{
                 platform: Platform::Mac,
                 id: "MacHubkit".to_owned(),
-                package_type: PackageType::Dmg,
+                package_type: PackageType::App,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioHubKit4".to_owned(),
                     teamcity_binary_path: "GravioHubKit.dmg".to_owned(),
