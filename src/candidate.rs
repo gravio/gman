@@ -164,8 +164,7 @@ impl Eq for Version {}
 
 lazy_static! {
     static ref MOUNTED_VOLUME_REGEX: Regex =
-    Regex::new(r"(/Volumes/.+$)").expect("Failed to create Volumes regex");
-
+        Regex::new(r"(/Volumes/.+$)").expect("Failed to create Volumes regex");
     static ref VERSION_REGEX: Regex =
         Regex::new(r#"^(\d{1,})(?:[.-](\d{1,}))?(?:[.-](\d{1,}))?(?:[.-](\d{1,}))?$"#)
             .expect("Failed to create Version 1 regex");
@@ -408,13 +407,11 @@ impl InstallationCandidate {
     }
 }
 
-
-fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>>{
+#[cfg(target_os = "macos")]
+fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     /* make temporary folder on system */
     let temp_dir = {
-        let output = Command::new("mktemp")
-        .arg("-d")
-        .output()?;
+        let output = Command::new("mktemp").arg("-d").output()?;
 
         // Check if the command was successful
         if output.status.success() {
@@ -433,9 +430,9 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>>{
     /* mount the dmg file */
     let mount = {
         let output = Command::new("hdiutil")
-        .arg("attach")
-        .arg(binary_path)
-        .output()?;
+            .arg("attach")
+            .arg(binary_path)
+            .output()?;
 
         // Check if the command was successful
         if output.status.success() {
@@ -474,9 +471,7 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>>{
             log::info!("Checking if mounted contents are .app or .pkg");
 
             let is_dot_app: Option<MacPackage> = {
-                let output = Command::new("ls")
-                .arg(&volume)
-                .output()?;
+                let output = Command::new("ls").arg(&volume).output()?;
                 if output.status.success() {
                     log::debug!("ls'd mounted volume");
                     let result = String::from_utf8_lossy(&output.stdout);
@@ -493,47 +488,61 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>>{
                             })
                         }
                         None => {
-                            let found_pkg = lines.iter().find(|x|x.ends_with(".pkg"));
+                            let found_pkg = lines.iter().find(|x| x.ends_with(".pkg"));
                             match found_pkg {
                                 Some(app_path) => {
-                                    let full_path = PathBuf::from_str(&volume).unwrap().join(app_path);
+                                    let full_path =
+                                        PathBuf::from_str(&volume).unwrap().join(app_path);
                                     Some(MacPackage {
                                         is_app: false,
                                         is_pkg: true,
                                         path: full_path.to_str().unwrap().to_string(),
                                     })
                                 }
-                                None => {
-                                    None
-                                }
+                                None => None,
                             }
-
                         }
                     }
                 } else {
-                    return Err(Box::new(GManError::new(&format!("Failed to ls mounted directory: {}", output.status))))
+                    return Err(Box::new(GManError::new(&format!(
+                        "Failed to ls mounted directory: {}",
+                        output.status
+                    ))));
                 }
             };
 
             if let Some(package) = is_dot_app {
                 if package.is_app {
-                    log::debug!("Inner contents are .app, will copy directly  from {} to /Applications", &package.path);
-                    fs_extra::copy_items(&[package.path], "/Applications", &dir::CopyOptions::new().overwrite(true))?;
+                    log::debug!(
+                        "Inner contents are .app, will copy directly  from {} to /Applications",
+                        &package.path
+                    );
+                    fs_extra::copy_items(
+                        &[package.path],
+                        "/Applications",
+                        &dir::CopyOptions::new().overwrite(true),
+                    )?;
                     log::info!("Copied Application from mount to /Applications");
                 } else if package.is_pkg {
                     log::debug!("Inner contensts are .pkg, will run dpkg installer");
                     let output = Command::new("installer")
-                    .arg("-pkg")
-                    .arg(&volume)
-                    .arg("-target")
-                    .arg("/")
-                    .output()?;
+                        .arg("-pkg")
+                        .arg(&volume)
+                        .arg("-target")
+                        .arg("/")
+                        .output()?;
 
                     if output.status.success() {
                         log::debug!("Successfully ran installer for package contents");
                     } else {
-                        log::error!("Failed to run installer for package contents: {}", &output.status);
-                        return Err(Box::new(GManError::new(&format!("Failed to run installer for package contents: {}", &output.status))));
+                        log::error!(
+                            "Failed to run installer for package contents: {}",
+                            &output.status
+                        );
+                        return Err(Box::new(GManError::new(&format!(
+                            "Failed to run installer for package contents: {}",
+                            &output.status
+                        ))));
                     }
                 } else {
                     log::warn!("Mounted item but contents were neither app nor pkg");
@@ -542,17 +551,19 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>>{
                 log::warn!("Mounted item but could not extract contents");
             }
 
-
             let output = Command::new("hdiutil")
-            .arg("detach")
-            .arg(&volume)
-            .output()?;
+                .arg("detach")
+                .arg(&volume)
+                .output()?;
 
             if output.status.success() {
                 log::debug!("Unmounted volume at {}", volume);
             } else {
                 log::error!("Failed to unmount volume at {}", &volume);
-                return Err(Box::new(GManError::new(&format!("Failed to unmount volume at {}", volume))));
+                return Err(Box::new(GManError::new(&format!(
+                    "Failed to unmount volume at {}",
+                    volume
+                ))));
             }
 
             Ok(())
@@ -620,7 +631,7 @@ pub struct InstalledProduct {
     pub package_type: PackageType,
 }
 
-#[cfg(target_os= "windows")]
+#[cfg(target_os = "windows")]
 impl From<InstalledAppXProduct> for InstalledProduct {
     fn from(value: InstalledAppXProduct) -> Self {
         InstalledProduct {
@@ -633,13 +644,12 @@ impl From<InstalledAppXProduct> for InstalledProduct {
 }
 
 impl InstalledProduct {
-
     pub fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Shutting down {} if running", &self.product_name);
-        
+
         #[cfg(target_os = "macos")]
-         /* Shut down the running process, if any */
-         shutdown_program_mac(&self)?;
+        /* Shut down the running process, if any */
+        shutdown_program_mac(&self)?;
 
         Ok(())
     }
@@ -693,9 +703,10 @@ impl InstalledProduct {
                     log::debug!("Successfully removed Application to trash");
                     return Ok(());
                 }
-                return Err(Box::new(GManError::new(
-                        &format!("Failed to remove application from /Applications directory: {}",
-                    output.status))));
+                return Err(Box::new(GManError::new(&format!(
+                    "Failed to remove application from /Applications directory: {}",
+                    output.status
+                ))));
             }
         }
         #[cfg(target_os = "linux")]
@@ -704,7 +715,7 @@ impl InstalledProduct {
     }
 }
 
-#[cfg(any(target_os="macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 struct MacPackage {
     is_pkg: bool,
     is_app: bool,
@@ -712,7 +723,9 @@ struct MacPackage {
 }
 
 #[cfg(target_os = "macos")]
-fn get_path_to_application_mac(installed: &InstalledProduct) -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
+fn get_path_to_application_mac(
+    installed: &InstalledProduct,
+) -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
     use std::{collections::HashMap, fs};
 
     /* list contents of /Applications */
@@ -723,22 +736,20 @@ fn get_path_to_application_mac(installed: &InstalledProduct) -> Result<Option<Pa
                     let path = entry.path();
                     if entry.file_type()?.is_dir() {
                         let app_path = path.join("Contents").join("Info.plist");
-                        match plist::from_file::<
-                            std::path::PathBuf,
-                            HashMap<String, plist::Value>,
-                        >(app_path.clone())
-                        {
+                        match plist::from_file::<std::path::PathBuf, HashMap<String, plist::Value>>(
+                            app_path.clone(),
+                        ) {
                             Ok(pl) => {
                                 let id = pl.get("CFBundleIdentifier");
-                                if id.is_none()
-                                {
+                                if id.is_none() {
                                     log::error!("Opened plist file but didnt have CFBundleIdentifier, CFBundleExecutable,nCFBundleShortVersionString, or CFBundleVersion  keys");
                                     continue;
                                 }
                                 let id = id.unwrap().as_string();
-                                if id.is_none()
-                                {
-                                    log::error!("CFBundleIdentifier or CDBundleExecutable were not strings");
+                                if id.is_none() {
+                                    log::error!(
+                                        "CFBundleIdentifier or CDBundleExecutable were not strings"
+                                    );
                                     continue;
                                 }
                                 let found_id = id.unwrap();
@@ -782,8 +793,8 @@ fn get_running_app_pids_mac() -> Result<Vec<String>, Box<dyn std::error::Error>>
         for line in lines {
             let splits = line.split('\t').collect::<Vec<&str>>();
             if splits.len() > 2 {
-            let label = splits[2];
-            pid_labels.push(label.into());
+                let label = splits[2];
+                pid_labels.push(label.into());
             }
         }
 
@@ -795,49 +806,46 @@ fn get_running_app_pids_mac() -> Result<Vec<String>, Box<dyn std::error::Error>>
     }
 }
 
+/// shuts down a program, usually by its Identifier.
+/// This is the first step before Uninstalling
+#[cfg(target_os = "macos")]
+fn shutdown_program_mac(installed: &InstalledProduct) -> Result<(), Box<dyn std::error::Error>> {
+    let running_processes = get_running_app_pids_mac()?;
 
-    /// shuts down a program, usually by its Identifier.
-    /// This is the first step before Uninstalling
-    #[cfg(target_os = "macos")]
-    fn shutdown_program_mac(
-        installed: &InstalledProduct,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let running_processes = get_running_app_pids_mac()?;
+    match running_processes
+        .iter()
+        .find(|x| x.contains(&installed.package_name))
+    {
+        Some(running) => {
+            log::debug!("Stopping application {}", running.as_str());
+            let output = Command::new("launchctl")
+                .arg("stop")
+                .arg(running.as_str())
+                .output()?;
 
-        match running_processes
-            .iter()
-            .find(|x| x.contains(&installed.package_name))
-        {
-            Some(running) => {
-                log::debug!("Stopping application {}", running.as_str());
-                let output = Command::new("launchctl")
-                    .arg("stop")
-                    .arg(running.as_str())
-                    .output()?;
-
-                // Check if the command was successful
-                if output.status.success() {
-                    log::debug!("Successfully stopped application");
-                    Ok(())
-                } else {
-                    log::error!("Failed to stop application: {}", output.status);
-                    Err(Box::new(GManError::new(&format!(
-                        "Failed to kill process id {} for application {}: {}",
-                        running.as_str(),
-                        &installed.package_name,
-                        &output.status,
-                    ))))
-                }
-            }
-            None => {
-                log::debug!(
-                    "Tried to stop running application {}, but not found in running pids list",
-                    &installed.package_name
-                );
+            // Check if the command was successful
+            if output.status.success() {
+                log::debug!("Successfully stopped application");
                 Ok(())
+            } else {
+                log::error!("Failed to stop application: {}", output.status);
+                Err(Box::new(GManError::new(&format!(
+                    "Failed to kill process id {} for application {}: {}",
+                    running.as_str(),
+                    &installed.package_name,
+                    &output.status,
+                ))))
             }
         }
+        None => {
+            log::debug!(
+                "Tried to stop running application {}, but not found in running pids list",
+                &installed.package_name
+            );
+            Ok(())
+        }
     }
+}
 
 #[cfg(windows)]
 #[derive(Deserialize)]

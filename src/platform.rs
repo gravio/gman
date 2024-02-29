@@ -89,8 +89,13 @@ impl Platform {
         {
             Some(Platform::IOS)
         }
-        #[cfg(not(any(target_os = "windows", target_os="macos", target_os = "linux", target_os = "android", target_os = "ios")))]
+        #[cfg(not(any(
+            target_os = "windows",
+            target_os = "macos",
+            target_os = "linux",
+            target_os = "android",
+            target_os = "ios"
+        )))]
         None
-
     }
 }

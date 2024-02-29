@@ -181,7 +181,7 @@ lazy_static! {
                     teamcity_binary_path: "developerid/GravioStudio.dmg".to_owned(),
                 },
                 metadata: Some(HashMap::from([
-                    ("CFBundleName".into(), "Gravio Studio".into()), 
+                    ("CFBundleName".into(), "Gravio Studio".into()),
                     ("CFBundleIdentifier".into(), "com.asteria.mac.graviostudio4".into())
                 ])),
             },
@@ -194,7 +194,7 @@ lazy_static! {
                     teamcity_binary_path: "appstore/Gravio Studio.pkg".to_owned(),
                 },
                 metadata: Some(HashMap::from([
-                    ("CFBundleName".into(), "Gravio Studio".into()), 
+                    ("CFBundleName".into(), "Gravio Studio".into()),
                     ("CFBundleIdentifier".into(), "com.asteria.mac.graviostudio4".into())
                 ])),
             }
@@ -278,7 +278,7 @@ lazy_static! {
                     teamcity_binary_path: "GravioHubKit.dmg".to_owned(),
                 },
                 metadata: Some(HashMap::from([
-                    ("CFBundleName".into(), "Gravio HubKit".into()), 
+                    ("CFBundleName".into(), "Gravio HubKit".into()),
                     ("CFBundleIdentifier".into(), "com.asteria.mac.gravio4".into())
                 ])),
             },
@@ -328,13 +328,11 @@ lazy_static! {
 
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use plist::Value;
-
 
     #[test]
     fn test_parse_plist() {
@@ -411,7 +409,7 @@ mod tests {
 </dict>
 </plist>
         "#;
-        let pl:HashMap<String, Value> = plist::from_bytes(plist_str.as_bytes()).unwrap();
+        let pl: HashMap<String, Value> = plist::from_bytes(plist_str.as_bytes()).unwrap();
 
         println!("{:#?}", pl);
     }

@@ -13,10 +13,9 @@ use crate::candidate::{
 
 use crate::gman_error::GManError;
 use crate::platform::Platform;
+use crate::product::PackageType;
 use crate::product::Product;
 use crate::{app, product, team_city, util, CandidateRepository, ClientConfig};
-use crate::product::PackageType;
-
 
 use tabled::settings::{object::Rows, Alignment, Modify, Style};
 
@@ -485,8 +484,6 @@ impl Client {
             .collect::<Vec<&Product>>();
         xyz.clone()
     }
-
-
 
     #[cfg(target_os = "macos")]
     fn get_installed_mac(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
