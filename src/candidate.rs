@@ -516,8 +516,9 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(package) = is_dot_app {
                 if package.is_app {
                     log::debug!(
-                        "Inner contents are .app, will copy directly  from {} to /Applications",
-                        &package.path
+                        "Inner contents are .app, will copy directly  from {} to {}",
+                        &package.path,
+                        &MAC_APPLICATIONS_DIR,
                     );
 
                     let last_level = app::disable_logging();
@@ -539,7 +540,8 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                     )?;
                     app::enable_logging(last_level);
 
-                    log::info!("Copied Application from mount to /Applications");
+                    log::info!("Copied Application from mount to {}", &MAC_APPLICATIONS_DIR,
+                );
                 } else if package.is_pkg {
                     log::debug!("Inner contensts are .pkg, will run dpkg installer");
                     let output = Command::new("installer")
@@ -721,7 +723,8 @@ impl InstalledProduct {
                     return Ok(());
                 }
                 return Err(Box::new(GManError::new(&format!(
-                    "Failed to remove application from /Applications directory: {}",
+                    "Failed to remove application from {} directory: {}",
+                    &MAC_APPLICATIONS_DIR,
                     output.status
                 ))));
             }
@@ -789,7 +792,7 @@ fn get_path_to_application_mac(
             }
         }
         Err(e) => {
-            log::error!("Failed to read /Applications directory: {}", e);
+            log::error!("Failed to read {} directory: {}", &MAC_APPLICATIONS_DIR, e);
             return Err(Box::new(e));
         }
     };
