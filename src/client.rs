@@ -469,8 +469,87 @@ impl Client {
 
     #[cfg(target_os = "macos")]
     fn get_installed_mac(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
-        let mut installed: Vec<InstalledProduct> = Vec::new();
+        use std::collections::HashMap;
 
+        use crate::product::PackageType;
+
+        let mut installed: Vec<InstalledProduct> = Vec::new();
+        /* list contents of /Applications */
+        match fs::read_dir("/Applications") {
+            Ok(list_dir) => {
+                for entry_result in list_dir {
+                    if let Ok(entry) = entry_result {
+                        let path = entry.path();
+                        if entry.file_type()?.is_dir() {
+                            let app_path = path.join("Contents").join("Info.plist");
+                            match plist::from_file::<std::path::PathBuf, HashMap<String, plist::Value>>(app_path.clone()) {
+                                Ok(pl) => {
+                                    let id = pl.get("CFBundleIdentifier");
+                                    let exe_name = pl.get("CFBundleExecutable");
+                                    let version_major_minor = pl.get("CFBundleShortVersionString");
+                                    let version_build = pl.get("CFBundleVersion");
+                                    if id.is_none() || exe_name.is_none() || version_major_minor.is_none() || version_build.is_none(){
+                                        log::error!("Opened plist file but didnt have CFBundleIdentifier, CFBundleExecutable,nCFBundleShortVersionString, or CFBundleVersion  keys");
+                                        continue;
+                                    }
+                                    let id = id.unwrap().as_string();
+                                    let exe_name = exe_name.unwrap().as_string();
+                                    let version_major_minor = version_major_minor.unwrap().as_string();
+                                    let version_build = version_build.unwrap().as_string();
+                                    if id.is_none() || exe_name.is_none() || version_major_minor.is_none() || version_build.is_none(){
+                                        log::error!("CFBundleIdentifier or CDBundleExecutable were not strings");
+                                        continue;
+                                    }
+                                    let found_id = id.unwrap();
+                                    let found_exe_name = exe_name.unwrap();
+                                    let found_version_major_minor = version_major_minor.unwrap();
+                                    let found_version_build = version_build.unwrap();
+
+
+                                    let mut product_name: String = String::default();
+                                    let mut product_identifier: String = String::default();
+                                    for product in &self.config.products {
+                                        for flavor in &product.flavors {
+                                            if flavor.platform == Platform::Mac {
+                                                if let Some(metadata) = &flavor.metadata {
+                                                    if let Some(known_id) = metadata.get("CFBundleIdentifier") {
+                                                        if known_id == found_id {
+                                                            product_identifier = known_id.into();
+                                                            product_name = product.name.to_owned();
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // &self.config.products.iter().find(|x|x.flavors.iter().find(|y|y.platform == Platform::Mac).)
+
+                                    if product_identifier != String::default() {
+                                        let instaled_product = InstalledProduct{
+                                            product_name: product_name,
+                                            version: Version::new(&format!("{}.{}", found_version_major_minor, found_version_build)),
+                                            package_name: product_identifier,
+                                            package_type: PackageType::Dmg,
+                                        };
+
+                                        installed.push(instaled_product);
+                                    }
+
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to read contents of {}: {e}", &app_path.to_str().unwrap())
+                                }
+                            }
+                        } 
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to read /Applications directory: {}", e);
+                return Err(Box::new(e));
+            }
+        };
         Ok(installed)
     }
 
