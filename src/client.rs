@@ -468,6 +468,63 @@ impl Client {
     }
 
     #[cfg(target_os = "macos")]
+    fn get_running_app_pids_mac(&self) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+        let mut pid_labels: Vec<(String, String)>  = Vec::new();
+
+        let output = Command::new("launchctl")
+        .arg("list")
+        .output()?;
+
+    if output.status.success() {
+        let result = String::from_utf8_lossy(&output.stdout);
+        let lines = result.split('\n');
+        for line in lines {
+            let splits = line.split('\t').collect::<Vec<&str>>();
+            let pid = splits[0];
+            let label = splits[1];
+
+            pid_labels.push((pid.into(), label.into()));
+        }
+
+        self.config.products.iter().filter(|x|x.flavors.it)
+        
+        Ok(pid_labels)
+    } else {
+        Err(Box::new(GManError::new("Couldnt get PIDs for determinng running applications")))
+    }
+    }
+
+    /// shuts down a program, usually by its Identifier.
+    /// This is the first step before Uninstalling
+    #[cfg(target_os = "macos")]
+    fn shutdown_program_mac(&self, installed: &InstalledProduct) -> Result<(), Box<dyn std::error::Error>> {
+        let output = Command::new("launchctl")
+            .arg("stop")
+            .arg("")
+            .output()?;
+
+        // Check if the command was successful
+        if output.status.success() {
+            // Convert the output bytes to a string
+            let result = String::from_utf8_lossy(&output.stdout);
+            if result.len() > 0 {
+                let hubkit_splits: Vec<&str> = result.split("@").collect();
+                let version = hubkit_splits[1].trim();
+                let identifier = hubkit_splits[2].trim().to_owned();
+
+                let installed_product = InstalledProduct {
+                    product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
+                    version: Version::new(version),
+                    package_name: identifier.to_owned(),
+                    package_type: product::PackageType::Msi,
+                };
+
+                installed.push(installed_product);
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
     fn get_installed_mac(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
         use std::collections::HashMap;
 
@@ -523,8 +580,6 @@ impl Client {
                                             }
                                         }
                                     }
-                                    // &self.config.products.iter().find(|x|x.flavors.iter().find(|y|y.platform == Platform::Mac).)
-
                                     if product_identifier != String::default() {
                                         let instaled_product = InstalledProduct{
                                             product_name: product_name,
