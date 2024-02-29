@@ -11,6 +11,7 @@ use crate::candidate::{
 
 use crate::gman_error::GManError;
 use crate::platform::Platform;
+use crate::product::Product;
 use crate::{app, product, team_city, util, CandidateRepository, ClientConfig};
 
 use tabled::settings::{object::Rows, Alignment, Modify, Style};
@@ -467,59 +468,85 @@ impl Client {
         {}
     }
 
-    #[cfg(target_os = "macos")]
-    fn get_running_app_pids_mac(&self) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
-        let mut pid_labels: Vec<(String, String)>  = Vec::new();
-
-        let output = Command::new("launchctl")
-        .arg("list")
-        .output()?;
-
-    if output.status.success() {
-        let result = String::from_utf8_lossy(&output.stdout);
-        let lines = result.split('\n');
-        for line in lines {
-            let splits = line.split('\t').collect::<Vec<&str>>();
-            let pid = splits[0];
-            let label = splits[1];
-
-            pid_labels.push((pid.into(), label.into()));
-        }
-
-        self.config.products.iter().filter(|x|x.flavors.it)
-        
-        Ok(pid_labels)
-    } else {
-        Err(Box::new(GManError::new("Couldnt get PIDs for determinng running applications")))
+    /// Gets all configured products that are supported for the current executing platform
+    fn get_products_for_platform(&self) -> Vec<&Product> {
+        let current_platform =
+            Platform::platform_for_current_platform().expect("Expected supported platform");
+        let xyz = &self
+            .config
+            .products
+            .iter()
+            .filter(|x| x.flavors.iter().any(|y| y.platform == current_platform))
+            .collect::<Vec<&Product>>();
+        xyz.clone()
     }
+
+    #[cfg(target_os = "macos")]
+    fn get_running_app_pids_mac(
+        &self,
+    ) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+        let mut pid_labels: Vec<(String, String)> = Vec::new();
+
+        let output = Command::new("launchctl").arg("list").output()?;
+
+        if output.status.success() {
+            let result = String::from_utf8_lossy(&output.stdout);
+            let lines = result.split('\n');
+            for line in lines {
+                let splits = line.split('\t').collect::<Vec<&str>>();
+                let pid = splits[0];
+                let label = splits[1];
+
+                pid_labels.push((pid.into(), label.into()));
+            }
+
+            Ok(pid_labels)
+        } else {
+            Err(Box::new(GManError::new(
+                "Couldnt get PIDs for determinng running applications",
+            )))
+        }
     }
 
     /// shuts down a program, usually by its Identifier.
     /// This is the first step before Uninstalling
     #[cfg(target_os = "macos")]
-    fn shutdown_program_mac(&self, installed: &InstalledProduct) -> Result<(), Box<dyn std::error::Error>> {
-        let output = Command::new("launchctl")
-            .arg("stop")
-            .arg("")
-            .output()?;
+    fn shutdown_program_mac(
+        &self,
+        installed: &InstalledProduct,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let running_processes = self.get_running_app_pids_mac()?;
 
-        // Check if the command was successful
-        if output.status.success() {
-            // Convert the output bytes to a string
-            let result = String::from_utf8_lossy(&output.stdout);
-            if result.len() > 0 {
-                let hubkit_splits: Vec<&str> = result.split("@").collect();
-                let version = hubkit_splits[1].trim();
-                let identifier = hubkit_splits[2].trim().to_owned();
+        match running_processes
+            .iter()
+            .find(|x| x.1.contains(&installed.package_name))
+        {
+            Some(running) => {
+                log::debug!("Stopping application {}", running.1.as_str());
+                let output = Command::new("launchctl")
+                    .arg("stop")
+                    .arg(running.0.as_str())
+                    .output()?;
 
-                let installed_product = InstalledProduct {
-                    product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
-                    version: Version::new(version),
-                    package_name: identifier.to_owned(),
-                    package_type: product::PackageType::Msi,
-                };
-
-                installed.push(installed_product);
+                // Check if the command was successful
+                if output.status.success() {
+                    log::debug!("Successfully stopped application");
+                    Ok(())
+                } else {
+                    Err(Box::new(GManError::new(&format!(
+                        "Failed to kill process id {} for application {}: {}",
+                        running.0.as_str(),
+                        &installed.package_name,
+                        &output.status,
+                    ))))
+                }
+            }
+            None => {
+                log::debug!(
+                    "Tried to stop running application {}, but not found in running pids list",
+                    &installed.package_name
+                );
+                Ok(())
             }
         }
     }
@@ -539,21 +566,34 @@ impl Client {
                         let path = entry.path();
                         if entry.file_type()?.is_dir() {
                             let app_path = path.join("Contents").join("Info.plist");
-                            match plist::from_file::<std::path::PathBuf, HashMap<String, plist::Value>>(app_path.clone()) {
+                            match plist::from_file::<
+                                std::path::PathBuf,
+                                HashMap<String, plist::Value>,
+                            >(app_path.clone())
+                            {
                                 Ok(pl) => {
                                     let id = pl.get("CFBundleIdentifier");
                                     let exe_name = pl.get("CFBundleExecutable");
                                     let version_major_minor = pl.get("CFBundleShortVersionString");
                                     let version_build = pl.get("CFBundleVersion");
-                                    if id.is_none() || exe_name.is_none() || version_major_minor.is_none() || version_build.is_none(){
+                                    if id.is_none()
+                                        || exe_name.is_none()
+                                        || version_major_minor.is_none()
+                                        || version_build.is_none()
+                                    {
                                         log::error!("Opened plist file but didnt have CFBundleIdentifier, CFBundleExecutable,nCFBundleShortVersionString, or CFBundleVersion  keys");
                                         continue;
                                     }
                                     let id = id.unwrap().as_string();
                                     let exe_name = exe_name.unwrap().as_string();
-                                    let version_major_minor = version_major_minor.unwrap().as_string();
+                                    let version_major_minor =
+                                        version_major_minor.unwrap().as_string();
                                     let version_build = version_build.unwrap().as_string();
-                                    if id.is_none() || exe_name.is_none() || version_major_minor.is_none() || version_build.is_none(){
+                                    if id.is_none()
+                                        || exe_name.is_none()
+                                        || version_major_minor.is_none()
+                                        || version_build.is_none()
+                                    {
                                         log::error!("CFBundleIdentifier or CDBundleExecutable were not strings");
                                         continue;
                                     }
@@ -562,14 +602,15 @@ impl Client {
                                     let found_version_major_minor = version_major_minor.unwrap();
                                     let found_version_build = version_build.unwrap();
 
-
                                     let mut product_name: String = String::default();
                                     let mut product_identifier: String = String::default();
                                     for product in &self.config.products {
                                         for flavor in &product.flavors {
                                             if flavor.platform == Platform::Mac {
                                                 if let Some(metadata) = &flavor.metadata {
-                                                    if let Some(known_id) = metadata.get("CFBundleIdentifier") {
+                                                    if let Some(known_id) =
+                                                        metadata.get("CFBundleIdentifier")
+                                                    {
                                                         if known_id == found_id {
                                                             product_identifier = known_id.into();
                                                             product_name = product.name.to_owned();
@@ -581,22 +622,27 @@ impl Client {
                                         }
                                     }
                                     if product_identifier != String::default() {
-                                        let instaled_product = InstalledProduct{
+                                        let instaled_product = InstalledProduct {
                                             product_name: product_name,
-                                            version: Version::new(&format!("{}.{}", found_version_major_minor, found_version_build)),
+                                            version: Version::new(&format!(
+                                                "{}.{}",
+                                                found_version_major_minor, found_version_build
+                                            )),
                                             package_name: product_identifier,
                                             package_type: PackageType::Dmg,
                                         };
 
                                         installed.push(instaled_product);
                                     }
-
                                 }
                                 Err(e) => {
-                                    log::error!("Failed to read contents of {}: {e}", &app_path.to_str().unwrap())
+                                    log::error!(
+                                        "Failed to read contents of {}: {e}",
+                                        &app_path.to_str().unwrap()
+                                    )
                                 }
                             }
-                        } 
+                        }
                     }
                 }
             }
