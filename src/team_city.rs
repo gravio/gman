@@ -462,20 +462,6 @@ pub async fn download_artifact<'a>(
                 }
                 None => http_client.get(url.clone()).build().unwrap(),
             };
-            // let request: reqwest::Request = match &repo.repository_credentials {
-            //     Some(credentials) => {
-            //         let r = http_client.get(url).header(RANGE, range);
-            //         match credentials {
-            //             crate::RepositoryCredentials::BearerToken(token) => {
-            //                 r.bearer_auth(token).build().unwrap()
-            //             }
-            //             crate::RepositoryCredentials::BasicAuth { username, password } => {
-            //                 r.basic_auth(username, password.to_owned()).build().unwrap()
-            //             }
-            //         }
-            //     }
-            //     None => http_client.get(url).build().unwrap(),
-            // };
             let response = http_client.execute(request).await?;
 
             let status = response.status();

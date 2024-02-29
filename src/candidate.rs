@@ -1,12 +1,9 @@
 use fs_extra::dir;
+use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use regex::Regex;
 use serde::Deserialize;
 use std::{
-    fmt::Display,
-    ops::Deref,
-    path::{Path, PathBuf},
-    process::Command,
-    str::FromStr,
+    fmt::Display, ops::Deref, path::{Path, PathBuf}, process::Command, str::FromStr
 };
 
 use tabled::Tabled;
@@ -410,6 +407,8 @@ impl InstallationCandidate {
 #[cfg(target_os = "macos")]
 fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     /* make temporary folder on system */
+
+    use std::fmt::Write;
     let temp_dir = {
         let output = Command::new("mktemp").arg("-d").output()?;
 
@@ -517,11 +516,26 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                         "Inner contents are .app, will copy directly  from {} to /Applications",
                         &package.path
                     );
-                    fs_extra::copy_items(
+
+                    let last_level = app::disable_logging();
+                    let progress_bar = ProgressBar::new(0);
+                    progress_bar.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                            .unwrap()
+                            .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
+                            .progress_chars("#>-"));
+
+                    fs_extra::copy_items_with_progress(
                         &[package.path],
                         "/Applications",
                         &dir::CopyOptions::new().overwrite(true),
+                        |process_info| {
+                            progress_bar.set_length(process_info.total_bytes);
+                            progress_bar.set_position(process_info.copied_bytes);
+                            fs_extra::dir::TransitProcessResult::ContinueOrAbort
+                        }
                     )?;
+                    app::enable_logging(last_level);
+
                     log::info!("Copied Application from mount to /Applications");
                 } else if package.is_pkg {
                     log::debug!("Inner contensts are .pkg, will run dpkg installer");
