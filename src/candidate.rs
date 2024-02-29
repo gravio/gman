@@ -244,6 +244,9 @@ pub struct InstallationCandidate {
     pub installed: bool,
 }
 
+#[cfg(target_os = "macos")]
+const MAC_APPLICATIONS_DIR: &'static str = "/Applications";
+
 impl InstallationCandidate {
     pub fn product_equals(&self, installed_product: &InstalledProduct) -> bool {
         &installed_product.product_name == &self.product_name
@@ -526,7 +529,7 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
                     fs_extra::copy_items_with_progress(
                         &[package.path],
-                        "/Applications",
+                        MAC_APPLICATIONS_DIR,
                         &dir::CopyOptions::new().overwrite(true),
                         |process_info| {
                             progress_bar.set_length(process_info.total_bytes);
@@ -743,7 +746,7 @@ fn get_path_to_application_mac(
     use std::{collections::HashMap, fs};
 
     /* list contents of /Applications */
-    match fs::read_dir("/Applications") {
+    match fs::read_dir(MAC_APPLICATIONS_DIR) {
         Ok(list_dir) => {
             for entry_result in list_dir {
                 if let Ok(entry) = entry_result {
