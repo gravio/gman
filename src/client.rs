@@ -1,7 +1,5 @@
+use std::fs;
 use std::str::FromStr as _;
-use std::{env, fs};
-
-use std::collections::HashMap;
 
 use std::{fs::File, io::BufReader, process::Command};
 
@@ -481,6 +479,8 @@ impl Client {
 
     #[cfg(target_os = "macos")]
     fn get_installed_mac(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
+        use std::collections::HashMap;
+
         let mut installed: Vec<InstalledProduct> = Vec::new();
         /* list contents of /Applications */
         match fs::read_dir("/Applications") {

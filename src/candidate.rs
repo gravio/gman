@@ -1,16 +1,12 @@
-use fs_extra::dir::{self, CopyOptions};
-use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use regex::Regex;
 use serde::Deserialize;
 use std::{
     fmt::Display,
-    fs,
     ops::Deref,
     path::{Path, PathBuf},
     process::Command,
     str::FromStr,
 };
-use walkdir::WalkDir;
 
 use tabled::Tabled;
 
@@ -18,7 +14,7 @@ use crate::{
     app,
     gman_error::GManError,
     platform::Platform,
-    product::{self, Flavor, PackageType, Product},
+    product::{Flavor, PackageType, Product},
 };
 use lazy_static::lazy_static;
 
@@ -415,6 +411,8 @@ impl InstallationCandidate {
 
 #[cfg(target_os = "macos")]
 fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    use fs_extra::dir::{self, CopyOptions};
+    use indicatif::{ProgressBar, ProgressState, ProgressStyle};
     /* make temporary folder on system */
 
     use std::{fmt::Write, io::Stdin, time::Duration};
@@ -598,9 +596,11 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn count_with_symlinks<P: AsRef<Path>, Q: AsRef<Path>>(
     source: P,
 ) -> Result<usize, Box<dyn std::error::Error>> {
+    use walkdir::WalkDir;
     let walker = WalkDir::new(&source).follow_links(true);
 
     let mut count: usize = 0;
@@ -784,7 +784,7 @@ fn get_path_to_application_mac(
     use std::{collections::HashMap, fs};
 
     /* list contents of /Applications */
-    match fs::read_dir(MAC_APPLICATIONS_DIR) {
+    match std::fs::read_dir(MAC_APPLICATIONS_DIR) {
         Ok(list_dir) => {
             for entry_result in list_dir {
                 if let Ok(entry) = entry_result {
