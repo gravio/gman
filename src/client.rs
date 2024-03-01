@@ -301,7 +301,7 @@ impl Client {
                         None => {
                             /* version unspecified, prompt user to optionally fetch latest from build server */
                             println!("A candidate for installation has been found in the local cache, but since the version was unspecified it may be oudated. Would you like to check the remote repositories for updated versions? [y/N]");
-                            println!("{:#?}", &cached);
+                            println!("{}, {}", &cached.product_name, &cached.version);
                             let mut buffer = String::new();
                             std::io::stdin().read_line(&mut buffer)?;
                             if Self::is_console_confirm(&buffer) {
@@ -634,7 +634,9 @@ impl Client {
                 let closure = |v: &InstalledAppXProduct| -> Result<Option<&'a Product>, GManError> {
                     for product in products {
                         for flavor in &product.flavors {
-                            if flavor.package_type == PackageType::AppX {
+                            if flavor.package_type == PackageType::AppX
+                                || flavor.package_type == PackageType::MsiX
+                            {
                                 if let Some(metadata) = &flavor.metadata {
                                     if let Some(dname_regex) = metadata.get("NameRegex") {
                                         match Regex::new(&dname_regex) {
@@ -1156,7 +1158,8 @@ mod tests {
     #[tokio::test]
     async fn install_handbookx_specific_version() {
         let client = Client::load().expect("Failed to load client");
-        let target: Target = Target::Version("1.0.1656.0".to_owned());
+        // let target: Target = Target::Version("1.0.1656.0".into());
+        let target: Target = Target::Identifier("develop".into());
 
         let candidate = SearchCandidate::new(
             &product::PRODUCT_HANDBOOK_X.name,

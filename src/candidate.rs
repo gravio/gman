@@ -2,10 +2,15 @@ use fs_extra::dir::{self, CopyOptions};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use regex::Regex;
 use serde::Deserialize;
-use walkdir::WalkDir;
 use std::{
-    fmt::Display, fs, ops::Deref, path::{Path, PathBuf}, process::Command, str::FromStr
+    fmt::Display,
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+    process::Command,
+    str::FromStr,
 };
+use walkdir::WalkDir;
 
 use tabled::Tabled;
 
@@ -523,18 +528,19 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                     );
 
                     // let last_level = app::disable_logging();
-                    let progress_bar = ProgressBar::new_spinner().with_message("Copying contents to /Applications");
+                    let progress_bar = ProgressBar::new_spinner()
+                        .with_message("Copying contents to /Applications");
                     progress_bar.enable_steady_tick(Duration::from_millis(10));
                     let output = Command::new("cp")
-                    .arg("-Rf")
-                    .arg(&package.path)
-                    .arg(MAC_APPLICATIONS_DIR)
-                    // .stdout(std::process::Stdio::inherit())
-                    .output()?;
+                        .arg("-Rf")
+                        .arg(&package.path)
+                        .arg(MAC_APPLICATIONS_DIR)
+                        // .stdout(std::process::Stdio::inherit())
+                        .output()?;
                     progress_bar.finish_with_message("Copied items to folder");
-                if output.status.success() {
-                    log::debug!("Copied installer to {}", MAC_APPLICATIONS_DIR);
-                }
+                    if output.status.success() {
+                        log::debug!("Copied installer to {}", MAC_APPLICATIONS_DIR);
+                    }
 
                     // copy_recursively(&package.path, app_path)?;
 
@@ -592,32 +598,32 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-fn count_with_symlinks<P: AsRef<Path>, Q: AsRef<Path>>(source: P) -> Result<usize, Box<dyn std::error::Error>> {    
+fn count_with_symlinks<P: AsRef<Path>, Q: AsRef<Path>>(
+    source: P,
+) -> Result<usize, Box<dyn std::error::Error>> {
     let walker = WalkDir::new(&source).follow_links(true);
 
     let mut count: usize = 0;
     for entry in walker {
         let entry = entry?;
-        count +=1;
+        count += 1;
     }
     Ok(count)
 }
 
-
-
 #[cfg(target_os = "macos")]
 fn unmount_mac(volume: &str) -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new("hdiutil")
-    .arg("detach")
-    .arg(&volume)
-    .output()?;
+        .arg("detach")
+        .arg(&volume)
+        .output()?;
 
     if output.status.success() {
         log::debug!("Unmounted volume at {}", volume);
         Ok(())
     } else {
         log::error!("Failed to unmount volume at {}", &volume);
-         Err(Box::new(GManError::new(&format!(
+        Err(Box::new(GManError::new(&format!(
             "Failed to unmount volume at {}",
             volume
         ))))
