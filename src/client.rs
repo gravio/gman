@@ -586,6 +586,8 @@ impl Client {
 
         let mut installed: Vec<InstalledProduct> = Vec::new();
 
+        let products = &self.get_products_for_platform();
+
         let publisher_ids_for_platform = self
             .config
             .publisher_identities
@@ -628,7 +630,38 @@ impl Client {
                     result.push(']');
                 };
                 let v: Vec<InstalledAppXProduct> = serde_json::from_str(&result)?;
-                for appx in v {
+
+                let closure = |v: &InstalledAppXProduct| -> Result<Option<&'a Product>, GManError> {
+                    for product in products {
+                        for flavor in &product.flavors {
+                            if flavor.package_type == PackageType::AppX {
+                                if let Some(metadata) = &flavor.metadata {
+                                    if let Some(dname_regex) = metadata.get("NameRegex") {
+                                        match Regex::new(&dname_regex) {
+                                            Ok(rgx) => {
+                                                if rgx.is_match(&v.name) {
+                                                    return Ok(Some(product));
+                                                }
+                                            }
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "Failed to compile regex for item: {}",
+                                                    &dname_regex
+                                                );
+                                                return Err(GManError::new(&format!("Tried to compile regex for display name on product {} with string {}, but not valid regex syntax: {}", product.name, dname_regex, e)));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Ok(None)
+                };
+                for mut appx in v {
+                    if let Some(found) = closure(&appx)? {
+                        appx.name = found.name.to_owned();
+                    }
                     installed.push(appx.into());
                 }
             } else {
@@ -682,7 +715,6 @@ impl Client {
                 let result = String::from_utf8_lossy(&output.stdout);
                 if result.len() > 0 {
                     let found_package: InstalledAppXProduct = serde_json::from_str(&result)?;
-                    let products = &self.get_products_for_platform();
 
                     let closure = || -> Result<Option<&'a Product>, GManError> {
                         for product in products {
