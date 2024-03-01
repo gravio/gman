@@ -782,7 +782,7 @@ impl Client {
 
     /// Whether the given string is any kind of confirmation (yes, y, etc)
     fn is_console_confirm(val: &str) -> bool {
-        let affirmative: Vec<&str> = vec!["y", "yes"];
+        let affirmative = ["y", "yes"];
         affirmative.iter().any(|v| *v == val.trim().to_lowercase())
     }
 
