@@ -661,8 +661,8 @@ impl Client {
                 for mut appx in v {
                     if let Some(found) = closure(&appx)? {
                         appx.name = found.name.to_owned();
+                        installed.push(appx.into());
                     }
-                    installed.push(appx.into());
                 }
             } else {
                 // Print the error message if the command failed
