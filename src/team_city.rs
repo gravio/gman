@@ -108,7 +108,7 @@ pub async fn get_builds<'a>(
     http_client: &reqwest::Client,
     current_platform: Platform,
     valid_repositories: &Vec<&CandidateRepository>,
-    products: &'a Vec<&Product>,
+    products: &'a Vec<Product>,
 ) -> Result<Vec<InstallationCandidate>, Box<dyn std::error::Error>> {
     let mut candidates: Vec<InstallationCandidate> = Vec::new();
 

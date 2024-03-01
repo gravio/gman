@@ -114,17 +114,11 @@ impl Client {
 
         let valid_repositories = self.get_valid_repositories_for_platform();
 
-        let products: Vec<&product::Product> = vec![
-            &*product::PRODUCT_GRAVIO_HUBKIT,
-            &*product::PRODUCT_GRAVIO_STUDIO,
-            &*product::PRODUCT_HANDBOOK_X,
-        ];
-
         let mut builds = team_city::get_builds(
             &self.http_client,
             current_platform,
             &valid_repositories,
-            &products,
+            &self.config.products,
         )
         .await?;
 
@@ -585,7 +579,11 @@ impl Client {
     }
 
     #[cfg(target_os = "windows")]
-    fn get_installed_windows(&self) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
+    fn get_installed_windows<'a>(
+        &'a self,
+    ) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
+        use regex::Regex;
+
         let mut installed: Vec<InstalledProduct> = Vec::new();
 
         let publisher_ids_for_platform = self
@@ -660,11 +658,16 @@ impl Client {
                     r#")) {
                         $key_name = ($obj | Select-Object Name | Split-Path -Leaf).replace('}}', '}')
                         $ver = $obj.GetValue('DisplayVersion')
-                        Write-Host $dn@$ver@$key_name
+                        $json = @{
+                            "Name" = $dn
+                            "Version" = $ver
+                            "PackageFullName" = $key_name
+                        }
+                        $MyJsonVariable = $json | ConvertTo-Json -Compress
+                        Write-Host $MyJsonVariable
                       }
                     }"#,
                 ];
-
                 String::from_iter(parts)
             };
 
@@ -678,25 +681,58 @@ impl Client {
                 // Convert the output bytes to a string
                 let result = String::from_utf8_lossy(&output.stdout);
                 if result.len() > 0 {
-                    let hubkit_splits: Vec<&str> = result.split("@").collect();
-                    let version = hubkit_splits[1].trim();
-                    let identifier = hubkit_splits[2].trim().to_owned();
+                    let found_package: InstalledAppXProduct = serde_json::from_str(&result)?;
+                    let products = &self.get_products_for_platform();
 
-                    let installed_product = InstalledProduct {
-                        product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
-                        version: Version::new(version),
-                        package_name: identifier.to_owned(),
-                        package_type: product::PackageType::Msi,
+                    let closure = || -> Result<Option<&'a Product>, GManError> {
+                        for product in products {
+                            for flavor in &product.flavors {
+                                if flavor.package_type == PackageType::Msi {
+                                    if let Some(metadata) = &flavor.metadata {
+                                        if let Some(dname_regex) = metadata.get("DisplayNameRegex")
+                                        {
+                                            match Regex::new(&dname_regex) {
+                                                Ok(rgx) => {
+                                                    if rgx.is_match(&found_package.name) {
+                                                        return Ok(Some(product));
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    eprintln!(
+                                                        "Failed to compile regex for item: {}",
+                                                        &dname_regex
+                                                    );
+                                                    return Err(GManError::new(&format!("Tried to compile regex for display name on product {} with string {}, but not valid regex syntax: {}", product.name, dname_regex, e)));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Ok(None)
                     };
 
-                    installed.push(installed_product);
+                    let found_product = closure()?;
+
+                    if let Some(found) = found_product {
+                        let installed_product = InstalledProduct {
+                            product_name: found.name.to_owned(),
+                            version: Version::new(&found_package.version),
+                            package_name: found_package.package_full_name.to_owned(),
+                            package_type: product::PackageType::Msi,
+                        };
+
+                        installed.push(installed_product);
+                    }
                 }
             } else {
                 // Print the error message if the command failed
                 eprintln!("PowerShell command failed:\n{:?}", output.status);
-                return Err(Box::new(GManError::new(
-                    "Failed to get installations: MSI items",
-                )));
+                return Err(Box::new(GManError::new(&format!(
+                    "Failed to get installations: MSI items: {}",
+                    output.status
+                ))));
             }
         }
 

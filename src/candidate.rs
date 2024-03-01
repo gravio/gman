@@ -3,7 +3,11 @@ use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use regex::Regex;
 use serde::Deserialize;
 use std::{
-    fmt::Display, ops::Deref, path::{Path, PathBuf}, process::Command, str::FromStr
+    fmt::Display,
+    ops::Deref,
+    path::{Path, PathBuf},
+    process::Command,
+    str::FromStr,
 };
 
 use tabled::Tabled;
@@ -536,12 +540,11 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                             progress_bar.set_length(process_info.total_bytes);
                             progress_bar.set_position(process_info.copied_bytes);
                             fs_extra::dir::TransitProcessResult::ContinueOrAbort
-                        }
+                        },
                     )?;
                     app::enable_logging(last_level);
 
-                    log::info!("Copied Application from mount to {}", &MAC_APPLICATIONS_DIR,
-                );
+                    log::info!("Copied Application from mount to {}", &MAC_APPLICATIONS_DIR,);
                 } else if package.is_pkg {
                     log::debug!("Inner contensts are .pkg, will run dpkg installer");
                     let output = Command::new("installer")
@@ -724,8 +727,7 @@ impl InstalledProduct {
                 }
                 return Err(Box::new(GManError::new(&format!(
                     "Failed to remove application from {} directory: {}",
-                    &MAC_APPLICATIONS_DIR,
-                    output.status
+                    &MAC_APPLICATIONS_DIR, output.status
                 ))));
             }
         }
