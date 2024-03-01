@@ -114,6 +114,12 @@ pub struct Flavor {
     pub package_type: PackageType,
     #[serde(rename = "Metadata")]
     pub metadata: Option<HashMap<String, String>>,
+    #[serde(rename = "Autorun", default="default_bool::<false>")]
+    pub autorun: bool,
+}
+
+const fn default_bool<const V: bool>() -> bool {
+    V
 }
 
 impl Flavor {
@@ -127,6 +133,7 @@ impl Flavor {
                 teamcity_binary_path: "--".to_owned(),
             },
             metadata: None,
+            autorun: false,
         }
     }
 }
@@ -159,6 +166,8 @@ lazy_static! {
                     teamcity_binary_path: "graviostudio.zip".to_owned(),
                 },
                 metadata: None,
+                autorun: false,
+
             },
             Flavor {
                 platform: Platform::Windows,
@@ -169,8 +178,7 @@ lazy_static! {
                     teamcity_binary_path: "graviostudio_sideloading.zip".to_owned(),
                 },
                 metadata: None,
-
-
+            autorun: false,
             },
             Flavor {
                 platform: Platform::Mac,
@@ -184,6 +192,7 @@ lazy_static! {
                     ("CFBundleName".into(), "Gravio Studio".into()),
                     ("CFBundleIdentifier".into(), "com.asteria.mac.graviostudio4".into())
                 ])),
+                autorun: false,
             },
             Flavor {
                 platform: Platform::Mac,
@@ -197,6 +206,7 @@ lazy_static! {
                     ("CFBundleName".into(), "Gravio Studio".into()),
                     ("CFBundleIdentifier".into(), "com.asteria.mac.graviostudio4".into())
                 ])),
+                autorun: false,
             }
         ],
     };
@@ -221,7 +231,7 @@ lazy_static! {
                     teamcity_binary_path: "".to_owned(),
                 },
                 metadata: None,
-
+                autorun: false,
             }
         ],
     };
@@ -239,7 +249,7 @@ lazy_static! {
                     teamcity_id: "Gravio_UpdateManager".to_owned(),
                 },
                 metadata: None,
-
+                autorun: false,
             },
             Flavor{
                 platform: Platform::Mac,
@@ -250,6 +260,7 @@ lazy_static! {
                     teamcity_id: "Gravio_UpdateManager4".to_owned(),
                 },
                 metadata: None,
+                autorun: false,
 
             }
         ]
@@ -267,7 +278,7 @@ lazy_static! {
                     teamcity_binary_path: "GravioHubKit.msi".to_owned(),
                 },
                 metadata: None,
-
+                autorun: false,
             },
             Flavor{
                 platform: Platform::Mac,
@@ -281,6 +292,7 @@ lazy_static! {
                     ("CFBundleName".into(), "Gravio HubKit".into()),
                     ("CFBundleIdentifier".into(), "com.asteria.mac.gravio4".into())
                 ])),
+                autorun: false,
             },
             // TODO(nf): Linux binaries are named for their version number (i.e., hubkit_5.2.1-8219_all.deb), this makes it hard to automatically extract their binary
         ],
@@ -298,7 +310,7 @@ lazy_static! {
                     teamcity_binary_path: "handbookx.msix".to_owned(),
                 },
                 metadata: None,
-
+                autorun: false,
             },
             Flavor {
                 platform: Platform::Windows,
@@ -309,7 +321,7 @@ lazy_static! {
                     teamcity_binary_path: "sideloadinghandbookx.msix".to_owned(),
                 },
                 metadata: None,
-
+                autorun: false,
             },
             Flavor {
                 platform: Platform::Android,
@@ -320,7 +332,7 @@ lazy_static! {
                     teamcity_binary_path: "handbookx-release.apk".to_owned(),
                 },
                 metadata: None,
-
+                autorun: false,
             },
         ],
     };

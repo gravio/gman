@@ -1,13 +1,10 @@
-use fs_extra::dir;
+use fs_extra::dir::{self, CopyOptions};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use regex::Regex;
 use serde::Deserialize;
+use walkdir::WalkDir;
 use std::{
-    fmt::Display,
-    ops::Deref,
-    path::{Path, PathBuf},
-    process::Command,
-    str::FromStr,
+    fmt::Display, fs, ops::Deref, path::{Path, PathBuf}, process::Command, str::FromStr
 };
 
 use tabled::Tabled;
@@ -415,7 +412,7 @@ impl InstallationCandidate {
 fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     /* make temporary folder on system */
 
-    use std::fmt::Write;
+    use std::{fmt::Write, io::Stdin, time::Duration};
     let temp_dir = {
         let output = Command::new("mktemp").arg("-d").output()?;
 
@@ -476,7 +473,7 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             log::info!("Got mount point for application: {}", volume.as_str());
             log::info!("Checking if mounted contents are .app or .pkg");
 
-            let is_dot_app: Option<MacPackage> = {
+            let package_type: Option<MacPackage> = {
                 let output = Command::new("ls").arg(&volume).output()?;
                 if output.status.success() {
                     log::debug!("ls'd mounted volume");
@@ -517,7 +514,7 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            if let Some(package) = is_dot_app {
+            if let Some(package) = package_type {
                 if package.is_app {
                     log::debug!(
                         "Inner contents are .app, will copy directly  from {} to {}",
@@ -525,24 +522,35 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                         &MAC_APPLICATIONS_DIR,
                     );
 
-                    let last_level = app::disable_logging();
-                    let progress_bar = ProgressBar::new(0);
-                    progress_bar.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-                            .unwrap()
-                            .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
-                            .progress_chars("#>-"));
+                    // let last_level = app::disable_logging();
+                    let progress_bar = ProgressBar::new_spinner().with_message("Copying contents to /Applications");
+                    progress_bar.enable_steady_tick(Duration::from_millis(10));
+                    let output = Command::new("cp")
+                    .arg("-Rf")
+                    .arg(&package.path)
+                    .arg(MAC_APPLICATIONS_DIR)
+                    // .stdout(std::process::Stdio::inherit())
+                    .output()?;
+                    progress_bar.finish_with_message("Copied items to folder");
+                if output.status.success() {
+                    log::debug!("Copied installer to {}", MAC_APPLICATIONS_DIR);
+                }
 
-                    fs_extra::copy_items_with_progress(
-                        &[package.path],
-                        MAC_APPLICATIONS_DIR,
-                        &dir::CopyOptions::new().overwrite(true),
-                        |process_info| {
-                            progress_bar.set_length(process_info.total_bytes);
-                            progress_bar.set_position(process_info.copied_bytes);
-                            fs_extra::dir::TransitProcessResult::ContinueOrAbort
-                        },
-                    )?;
-                    app::enable_logging(last_level);
+                    // copy_recursively(&package.path, app_path)?;
+
+                    // copy_with_symlinks(package.path, app_path, &fs_extra::dir::CopyOptions::new().overwrite(true))?;
+
+                    // fs_extra::copy_items(
+                    //     &[package.path],
+                    //     MAC_APPLICATIONS_DIR,
+                    //     &dir::CopyOptions::new().overwrite(true).copy_inside(true),
+                    //     // |process_info| {
+                    //     //     progress_bar.set_length(process_info.total_bytes);
+                    //     //     progress_bar.set_position(process_info.copied_bytes);
+                    //     //     fs_extra::dir::TransitProcessResult::ContinueOrAbort
+                    //     // },
+                    // )?;
+                    // app::enable_logging(last_level);
 
                     log::info!("Copied Application from mount to {}", &MAC_APPLICATIONS_DIR,);
                 } else if package.is_pkg {
@@ -573,20 +581,7 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 log::warn!("Mounted item but could not extract contents");
             }
 
-            let output = Command::new("hdiutil")
-                .arg("detach")
-                .arg(&volume)
-                .output()?;
-
-            if output.status.success() {
-                log::debug!("Unmounted volume at {}", volume);
-            } else {
-                log::error!("Failed to unmount volume at {}", &volume);
-                return Err(Box::new(GManError::new(&format!(
-                    "Failed to unmount volume at {}",
-                    volume
-                ))));
-            }
+            unmount_mac(&volume)?;
 
             Ok(())
         }
@@ -594,6 +589,38 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             log::error!("Failed to get mount point");
             Err(Box::new(GManError::new("Failed to get mount point")))
         }
+    }
+}
+
+fn count_with_symlinks<P: AsRef<Path>, Q: AsRef<Path>>(source: P) -> Result<usize, Box<dyn std::error::Error>> {    
+    let walker = WalkDir::new(&source).follow_links(true);
+
+    let mut count: usize = 0;
+    for entry in walker {
+        let entry = entry?;
+        count +=1;
+    }
+    Ok(count)
+}
+
+
+
+#[cfg(target_os = "macos")]
+fn unmount_mac(volume: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("hdiutil")
+    .arg("detach")
+    .arg(&volume)
+    .output()?;
+
+    if output.status.success() {
+        log::debug!("Unmounted volume at {}", volume);
+        Ok(())
+    } else {
+        log::error!("Failed to unmount volume at {}", &volume);
+         Err(Box::new(GManError::new(&format!(
+            "Failed to unmount volume at {}",
+            volume
+        ))))
     }
 }
 
