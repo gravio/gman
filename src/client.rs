@@ -369,8 +369,17 @@ impl Client {
                 for entry_result in list_dir {
                     if let Ok(entry) = entry_result {
                         if let Ok(fname) = entry.file_name().into_string() {
-                            if let Ok(ci) = InstallationCandidate::from_str(fname.as_str()) {
-                                found_candidates.push(ci);
+                            if let Ok(mut ci) = InstallationCandidate::from_str(fname.as_str()) {
+                                if let Some(product) =
+                                    Product::from_name(&ci.product_name, &self.config.products)
+                                {
+                                    if let Some(flavor) = &product.flavors.iter().find(|x| {
+                                        x.id.to_lowercase() == ci.flavor.id.to_lowercase()
+                                    }) {
+                                        ci.flavor = (*flavor).to_owned();
+                                        found_candidates.push(ci);
+                                    }
+                                }
                             }
                         }
                     }
@@ -870,7 +879,151 @@ impl Client {
 #[cfg(test)]
 mod tests {
 
-    use crate::{candidate::SearchCandidate, cli::Target, product, team_city, Client};
+    use std::{collections::HashMap, path::PathBuf, str::FromStr};
+
+    use crate::{
+        candidate::SearchCandidate,
+        cli::Target,
+        platform::Platform,
+        product::{self, Flavor, PackageType, Product, TeamCityMetadata},
+        team_city, Client,
+    };
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+    /* HubKit */
+    pub static ref PRODUCT_GRAVIO_HUBKIT: Product = Product {
+        name: "HubKit".to_owned(),
+        flavors: vec![
+            Flavor{
+                platform: Platform::Windows,
+                id: "WindowsHubkit".to_owned(),
+                package_type: PackageType::Msi,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_GravioHubKit4".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("GravioHubKit.msi").expect("Expected infalable binary msi hubkit path"),
+                },
+                metadata: None,
+                autorun: false,
+            },
+            Flavor{
+                platform: Platform::Mac,
+                id: "MacHubkit".to_owned(),
+                package_type: PackageType::App,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_id: "Gravio_GravioHubKit4".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("GravioHubKit.dmg").expect("Expected infalable app hubkit path"),
+                },
+                metadata: Some(HashMap::from([
+                    ("CFBundleName".into(), "Gravio HubKit".into()),
+                    ("CFBundleIdentifier".into(), "com.asteria.mac.gravio4".into())
+                ])),
+                autorun: false,
+            },
+            // TODO(nf): Linux binaries are named for their version number (i.e., hubkit_5.2.1-8219_all.deb), this makes it hard to automatically extract their binary
+        ],
+    };
+
+        /* Gravio Studio */
+        pub static ref PRODUCT_GRAVIO_STUDIO: Product = Product {
+            name: "GravioStudio".to_owned(),
+            flavors: vec![
+                Flavor {
+                    platform: Platform::Windows,
+                    id: "WindowsAppStore".to_owned(),
+                    package_type: PackageType::AppX,
+                    teamcity_metadata: TeamCityMetadata {
+                        teamcity_id: "Gravio_GravioStudio4forWindows".to_owned(),
+                        teamcity_binary_path: PathBuf::from_str("graviostudio.zip").expect("Expected infalable binary studio path"),
+                    },
+                    metadata: None,
+                    autorun: false,
+                },
+                Flavor {
+                    platform: Platform::Windows,
+                    id: "Sideloading".to_owned(),
+                    package_type: PackageType::AppX,
+                    teamcity_metadata: TeamCityMetadata {
+                        teamcity_id: "Gravio_GravioStudio4forWindows".to_owned(),
+                        teamcity_binary_path: PathBuf::from_str("graviostudio_sideloading.zip").expect("Expected infalable binary studio sideloading path"),
+                    },
+                    metadata: None,
+                autorun: false,
+                },
+                Flavor {
+                    platform: Platform::Mac,
+                    id: "DeveloperId".to_owned(),
+                    package_type: PackageType::App,
+                    teamcity_metadata: TeamCityMetadata {
+                        teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
+                        teamcity_binary_path: PathBuf::from_str("developerid/GravioStudio.dmg").expect("Expected infalable binary studio mac developer path"),
+                    },
+                    metadata: Some(HashMap::from([
+                        ("CFBundleName".into(), "Gravio Studio".into()),
+                        ("CFBundleIdentifier".into(), "com.asteria.mac.graviostudio4".into())
+                    ])),
+                    autorun: false,
+                },
+                Flavor {
+                    platform: Platform::Mac,
+                    id: "MacAppStore".to_owned(),
+                    package_type: PackageType::Pkg,
+                    teamcity_metadata: TeamCityMetadata {
+                        teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
+                        teamcity_binary_path: PathBuf::from_str("appstore/Gravio Studio.pkg").expect("Expected infalable binary studio mac appstore path"),
+                    },
+                    metadata: Some(HashMap::from([
+                        ("CFBundleName".into(), "Gravio Studio".into()),
+                        ("CFBundleIdentifier".into(), "com.asteria.mac.graviostudio4".into())
+                    ])),
+                    autorun: false,
+                }
+            ],
+        };
+
+        pub static ref PRODUCT_HANDBOOK_X: Product = Product {
+            name: "HandbookX".to_owned(),
+            flavors: vec![
+                Flavor {
+                    platform: Platform::Windows,
+                    id: "Windows".to_owned(),
+                    package_type: PackageType::MsiX,
+                    teamcity_metadata: TeamCityMetadata {
+                        teamcity_id: "Hubble_HubbleForWindows10".to_owned(),
+                        teamcity_binary_path: PathBuf::from_str("handbookx.msix")
+                            .expect("Expected infalable binary handbookx msix path"),
+                    },
+                    metadata: None,
+                    autorun: false,
+                },
+                Flavor {
+                    platform: Platform::Windows,
+                    id: "Sideloading".to_owned(),
+                    package_type: PackageType::MsiX,
+                    teamcity_metadata: TeamCityMetadata {
+                        teamcity_id: "Hubble_HubbleForWindows10".to_owned(),
+                        teamcity_binary_path: PathBuf::from_str("sideloadinghandbookx.msix")
+                            .expect("Expected infalable binary handbookx msix sideloading path"),
+                    },
+                    metadata: None,
+                    autorun: false,
+                },
+                Flavor {
+                    platform: Platform::Android,
+                    id: "Android".to_owned(),
+                    package_type: PackageType::Apk,
+                    teamcity_metadata: TeamCityMetadata {
+                        teamcity_id: "Hubble_2_HubbleFlutter".to_owned(),
+                        teamcity_binary_path: PathBuf::from_str("handbookx-release.apk")
+                            .expect("Expected infalable binary handbookx apkk path"),
+                    },
+                    metadata: None,
+                    autorun: false,
+                },
+            ],
+        };
+
+    }
 
     #[tokio::test]
     async fn tets_candidates() {
@@ -889,7 +1042,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_install_with_cache() {
-        let p = &product::PRODUCT_GRAVIO_STUDIO;
+        let p = &PRODUCT_GRAVIO_STUDIO;
         let client = Client::load().expect("Failed to load client");
 
         let search = SearchCandidate::new(
@@ -906,7 +1059,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_install_force_with_cache() {
-        let p = &product::PRODUCT_GRAVIO_STUDIO;
+        let p = &PRODUCT_GRAVIO_STUDIO;
         let client = Client::load().expect("Failed to load client");
 
         let search = SearchCandidate::new(
@@ -924,7 +1077,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_build_id_specific_version() {
-        let p = &product::PRODUCT_GRAVIO_HUBKIT;
+        let p = &PRODUCT_GRAVIO_HUBKIT;
 
         let client = Client::load().expect("Failed to load client");
 
@@ -957,7 +1110,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_build_id_by_identifier_name() {
-        let p = &product::PRODUCT_GRAVIO_HUBKIT;
+        let p = &PRODUCT_GRAVIO_HUBKIT;
         let client = Client::load().expect("Failed to load client");
 
         let candidate = SearchCandidate::new(
@@ -989,7 +1142,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_build_id_by_version() {
-        let p = &product::PRODUCT_HANDBOOK_X;
+        let p = &PRODUCT_HANDBOOK_X;
 
         let client = Client::load().expect("Failed to load client");
 
@@ -1022,7 +1175,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_build_id_by_no_results() {
-        let p = &product::PRODUCT_GRAVIO_HUBKIT;
+        let p = &PRODUCT_GRAVIO_HUBKIT;
 
         let client = Client::load().expect("Failed to load client");
 
@@ -1057,7 +1210,7 @@ mod tests {
         let target: Target = Target::Identifier("lmao".to_owned());
 
         let candidate = SearchCandidate::new(
-            &product::PRODUCT_GRAVIO_HUBKIT.name,
+            "HubKit".into(),
             match &target {
                 Target::Identifier(x) => Some(x.as_str()),
                 Target::Version(x) => Some(x.as_str()),
@@ -1083,7 +1236,7 @@ mod tests {
         let target: Target = Target::Identifier("develop".to_owned());
 
         let candidate = SearchCandidate::new(
-            &product::PRODUCT_GRAVIO_HUBKIT.name,
+            "HubKit".into(),
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),
@@ -1109,7 +1262,7 @@ mod tests {
         let target: Target = Target::Version("5.2.1-7049".to_owned());
 
         let candidate = SearchCandidate::new(
-            &product::PRODUCT_GRAVIO_HUBKIT.name,
+            &PRODUCT_GRAVIO_HUBKIT.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),
@@ -1135,7 +1288,7 @@ mod tests {
         let target: Target = Target::Version("5.2.4683".to_owned());
 
         let candidate = SearchCandidate::new(
-            &product::PRODUCT_GRAVIO_STUDIO.name,
+            &PRODUCT_GRAVIO_STUDIO.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),
@@ -1162,7 +1315,7 @@ mod tests {
         let target: Target = Target::Identifier("develop".into());
 
         let candidate = SearchCandidate::new(
-            &product::PRODUCT_HANDBOOK_X.name,
+            &PRODUCT_HANDBOOK_X.name,
             match &target {
                 Target::Identifier(_) => None,
                 Target::Version(x) => Some(x.as_str()),
@@ -1262,7 +1415,7 @@ mod tests {
     async fn download_develop_hubkit() {
         let client = Client::load().expect("Failed to load client");
         let vv = client.get_valid_repositories_for_platform();
-        let p = &product::PRODUCT_GRAVIO_HUBKIT;
+        let p = &PRODUCT_GRAVIO_HUBKIT;
 
         let c = SearchCandidate::new(
             &p.name,

@@ -662,32 +662,16 @@ impl FromStr for InstallationCandidate {
         let identifier = splits[3];
         let version = splits[4];
 
-        let product = Product::from_name(product_name, &Vec::new());
-        if let None = product {
-            return Err(GManError::new(
-                "Failed to extract product from InstallationCandidate FromStr",
-            ));
-        }
-        let product = product.unwrap();
-
-        let flavor = product
-            .flavors
-            .iter()
-            .find(|x| x.id.to_lowercase() == flavor_str.to_lowercase());
-
-        if let None = flavor {
-            return Err(GManError::new(
-                "Failed to extract flavor from InstallationCandidate FromStr",
-            ));
-        }
-
         let c = Self {
             remote_id: String::default(),
             repo_location: String::default(),
-            product_name: product_name.to_owned(),
+            product_name: product_name.into(),
             version: Version::new(version),
             identifier: identifier.to_owned(),
-            flavor: flavor.unwrap().to_owned(),
+            flavor: Flavor {
+                id: flavor_str.into(),
+                ..Flavor::empty()
+            },
             installed: false,
         };
 
@@ -934,21 +918,36 @@ pub struct InstalledAppXProduct {
 
 #[cfg(test)]
 mod tests {
-    use crate::{candidate::Version, product};
+    use std::collections::HashMap;
+
+    use crate::{
+        candidate::Version,
+        platform::Platform,
+        product::{self, Flavor, TeamCityMetadata},
+    };
 
     use super::InstallationCandidate;
 
     #[test]
     fn test_cached_file_name() {
         let i = InstallationCandidate {
-            flavor: product::PRODUCT_GRAVIO_HUBKIT
-                .flavors
-                .first()
-                .unwrap()
-                .to_owned(),
+            flavor: Flavor {
+                autorun: false,
+                id: "WindowsHubKit".into(),
+                metadata: Some(HashMap::from([(
+                    "DisplayNameRegex".into(),
+                    "Gravio HubKit*".into(),
+                )])),
+                package_type: product::PackageType::Msi,
+                teamcity_metadata: TeamCityMetadata {
+                    teamcity_binary_path: "GravioHubKit.msi".into(),
+                    teamcity_id: "Gravio_GravioHubKit4".into(),
+                },
+                platform: Platform::Windows,
+            },
             identifier: "develop".to_owned(),
             version: Version::new("5.2.3-7023"),
-            product_name: product::PRODUCT_GRAVIO_HUBKIT.name.to_owned(),
+            product_name: "HubKit".into(),
             remote_id: String::default(),
             repo_location: String::default(),
             installed: false,
