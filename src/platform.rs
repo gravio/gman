@@ -1,10 +1,10 @@
 use std::{fmt::Display, str::FromStr};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::gman_error::GManError;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub(crate) enum Platform {
     Android,
     IOS,

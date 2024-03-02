@@ -12,6 +12,8 @@ use candidate::{InstallationCandidate, Version};
 use clap::Parser;
 use cli::Commands;
 use client_config::*;
+use std::fs;
+use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
 
@@ -160,6 +162,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let candidates = client.get_installed();
             client.format_candidate_table(candidates, false, false);
             exit(0)
+        }
+        Some(Commands::Config { sample }) => {
+            if *sample {
+                let c = ClientConfig::make_sample();
+                let name = app::CLIENT_CONFIG_FILE_NAME;
+                let path = PathBuf::from_str("./")
+                    .expect("Expected to make a valid path in current directory");
+
+                let mut joined = path.join(name);
+                let mut num: usize = 0;
+                const max: usize = 200;
+                while joined.exists() {
+                    if num >= max {
+                        eprintln!("Cannot create sample file, maximum number of tried exceeded (200). Try deleting files named {}", app::CLIENT_CONFIG_FILE_NAME);
+                        exit(1);
+                    }
+                    num += 1;
+                    let name = format!("{}.{}", name, num);
+                    joined = path.join(name);
+                }
+                let stringified = serde_json::to_string_pretty(&c)
+                    .expect("Expected to deserialize sample config json");
+                std::fs::write(joined, stringified)?;
+            }
         }
         None => {
             println!("Default subcommand");

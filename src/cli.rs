@@ -49,6 +49,12 @@ pub enum Commands {
     },
     /// Lists items that are installed on this machine
     Installed,
+
+    /// Deals with the configuration
+    Config {
+        #[clap(short, long, help = "Generates a new sample configuration file")]
+        sample: bool,
+    },
 }
 
 #[derive(Subcommand, Clone)]

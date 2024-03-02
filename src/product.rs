@@ -1,12 +1,12 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use lazy_static::lazy_static;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json5;
 
 use crate::{gman_error::GManError, platform::Platform};
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
 pub struct Product {
     #[serde(rename = "Name")]
     pub name: String,
@@ -14,7 +14,7 @@ pub struct Product {
     pub flavors: Vec<Flavor>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Debug, PartialEq, Eq, Clone)]
 pub enum PackageType {
     /// Windows UWP style,
     AppX,
@@ -95,7 +95,7 @@ impl FromStr for PackageType {
         }
     }
 }
-#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
 pub struct TeamCityMetadata {
     #[serde(rename = "TeamCityId")]
     pub teamcity_id: String,
@@ -103,7 +103,7 @@ pub struct TeamCityMetadata {
     pub teamcity_binary_path: std::path::PathBuf,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
 pub struct Flavor {
     #[serde(rename = "Platform")]
     pub platform: Platform,

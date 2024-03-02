@@ -1,12 +1,15 @@
-use std::{borrow::Cow, env, fs, path::PathBuf, str::FromStr};
+use std::{borrow::Cow, collections::HashMap, env, fs, path::PathBuf, str::FromStr};
 
 use lazy_static::lazy_static;
-use serde::Deserialize;
-use serde_json5;
+use serde::{Deserialize, Serialize};
 
-use crate::{app, platform::Platform, product::Product};
+use crate::{
+    app,
+    platform::{self, Platform},
+    product::{self, Flavor, Product, TeamCityMetadata},
+};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct PublisherIdentity {
     /// Display name of this Publisher
     #[serde(rename = "Name")]
@@ -22,7 +25,7 @@ pub(crate) struct PublisherIdentity {
     pub products: Vec<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(tag = "Type")]
 pub enum RepositoryCredentials {
     BearerToken {
@@ -37,7 +40,7 @@ pub enum RepositoryCredentials {
     },
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct CandidateRepository {
     /// Display name of this repository
     #[serde(rename = "Name")]
@@ -51,7 +54,7 @@ pub(crate) struct CandidateRepository {
     pub platforms: Vec<Platform>,
 
     /// Defines this repository of a local folder
-    #[serde(rename = "RepositoryFolder")]
+    #[serde(rename = "RepositoryFolder", skip_serializing_if = "Option::is_none")]
     pub repository_folder: Option<String>,
 
     /// Defines this repository as a remote server
@@ -66,7 +69,7 @@ pub(crate) struct CandidateRepository {
     #[serde(rename = "Products")]
     pub products: Vec<String>,
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct ClientConfig {
     /// TeamCity repositories to download artifacts from
     #[serde(rename = "Repositories")]
@@ -89,7 +92,7 @@ pub(crate) struct ClientConfig {
     /// This differs from [temp_download_directory] because only complete artifacts are stored here,
     /// whereas downloads to the temp directory are not guaranteed to be complete (may be in progress, broken, etc)
     #[serde(
-        rename = "CascheDirectory",
+        rename = "CacheDirectory",
         deserialize_with = "deserialize_path_buf_cache",
         default = "default_cache"
     )]
@@ -99,7 +102,8 @@ pub(crate) struct ClientConfig {
     #[serde(
         rename = "LogLevel",
         default = "default_log_level",
-        deserialize_with = "deserialize_log_level"
+        deserialize_with = "deserialize_log_level",
+        serialize_with = "serialize_log_level"
     )]
     pub log_level: log::LevelFilter,
 
@@ -113,6 +117,70 @@ pub(crate) struct ClientConfig {
 
     #[serde(rename = "Products", default = "default_empty_products")]
     pub products: Vec<Product>,
+}
+impl ClientConfig {
+    /// Creates a sample config suitable for outputting into a json file, for demonstration and rebuilding a config purposes
+    pub fn make_sample() -> Self {
+        Self {
+            log_level: log::LevelFilter::Off,
+            cache_directory: default_cache(),
+            temp_download_directory: default_download(),
+            teamcity_download_chunk_size: default_chunk_size(),
+            repositories: vec![CandidateRepository {
+                name: "SampleRepository".into(),
+                repository_type: "TeamCity".into(),
+                platforms: vec![Platform::Windows, Platform::Mac],
+                products: vec!["SampleProduct".into()],
+                repository_server: Some("yourbuildserver.yourcompany.example.com".into()),
+                repository_credentials: Some(RepositoryCredentials::BearerToken {
+                    token: "your_token".into(),
+                }),
+                repository_folder: None,
+            }],
+            products: vec![product::Product {
+                name: "SampleProduct".into(),
+                flavors: vec![
+                    Flavor {
+                        autorun: false,
+                        id: "UWP".into(),
+                        package_type: product::PackageType::AppX,
+                        platform: Platform::Windows,
+                        teamcity_metadata: TeamCityMetadata {
+                            teamcity_binary_path: "path/to/WindowsUWP.zip".into(),
+                            teamcity_id: "SomeUwpSample".into(),
+                        },
+                        metadata: Some(HashMap::from([(
+                            "NameRegex".into(),
+                            "some.uwp.sampleproduct".into(),
+                        )])),
+                    },
+                    Flavor {
+                        autorun: false,
+                        id: "MacApp".into(),
+                        package_type: product::PackageType::App,
+                        platform: Platform::Mac,
+                        teamcity_metadata: TeamCityMetadata {
+                            teamcity_binary_path: "path/to/MacApp.dmg".into(),
+                            teamcity_id: "SomeMacSample".into(),
+                        },
+                        metadata: Some(HashMap::from([
+                            (
+                                "CFBundleIdentifier".into(),
+                                "com.somecompany.sampleproduct".into(),
+                            ),
+                            ("CFBundleName".into(), "SampleProduct".into()),
+                        ])),
+                    },
+                ],
+            }],
+            publisher_identities: vec![PublisherIdentity {
+                id: "CN=ab94ddc1-6575-33ed-8832-1a5d98a25117".into(),
+                name: "SomeCompany Windows Identifier".into(),
+                products: vec!["SomeProduct".into()],
+                platforms: vec![platform::Platform::Windows],
+            }],
+        }
+    }
 }
 
 pub const fn default_empty_publisher() -> Vec<PublisherIdentity> {
@@ -137,6 +205,13 @@ where
         Ok(s) => log::LevelFilter::from_str(&s).unwrap_or(default_log_level()),
         Err(_) => default_log_level(),
     })
+}
+
+fn serialize_log_level<S>(value: &log::LevelFilter, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(value.as_str())
 }
 
 const fn default_log_level() -> log::LevelFilter {
