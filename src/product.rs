@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use lazy_static::lazy_static;
 use serde::Deserialize;
@@ -99,7 +99,7 @@ pub struct TeamCityMetadata {
     #[serde(rename = "TeamCityId")]
     pub teamcity_id: String,
     #[serde(rename = "TeamCityBinaryPath")]
-    pub teamcity_binary_path: String,
+    pub teamcity_binary_path: std::path::PathBuf,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -114,7 +114,7 @@ pub struct Flavor {
     pub package_type: PackageType,
     #[serde(rename = "Metadata")]
     pub metadata: Option<HashMap<String, String>>,
-    #[serde(rename = "Autorun", default="default_bool::<false>")]
+    #[serde(rename = "Autorun", default = "default_bool::<false>")]
     pub autorun: bool,
 }
 
@@ -130,7 +130,7 @@ impl Flavor {
             package_type: PackageType::Msi,
             teamcity_metadata: TeamCityMetadata {
                 teamcity_id: "--".to_owned(),
-                teamcity_binary_path: "--".to_owned(),
+                teamcity_binary_path: PathBuf::new(),
             },
             metadata: None,
             autorun: false,
@@ -163,7 +163,7 @@ lazy_static! {
                 package_type: PackageType::AppX,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioStudio4forWindows".to_owned(),
-                    teamcity_binary_path: "graviostudio.zip".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("graviostudio.zip").expect("Expected infalable binary studio path"),
                 },
                 metadata: None,
                 autorun: false,
@@ -175,7 +175,7 @@ lazy_static! {
                 package_type: PackageType::AppX,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioStudio4forWindows".to_owned(),
-                    teamcity_binary_path: "graviostudio_sideloading.zip".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("graviostudio_sideloading.zip").expect("Expected infalable binary studio sideloading path"),
                 },
                 metadata: None,
             autorun: false,
@@ -186,7 +186,7 @@ lazy_static! {
                 package_type: PackageType::App,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
-                    teamcity_binary_path: "developerid/GravioStudio.dmg".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("developerid/GravioStudio.dmg").expect("Expected infalable binary studio mac developer path"),
                 },
                 metadata: Some(HashMap::from([
                     ("CFBundleName".into(), "Gravio Studio".into()),
@@ -200,7 +200,7 @@ lazy_static! {
                 package_type: PackageType::Pkg,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
-                    teamcity_binary_path: "appstore/Gravio Studio.pkg".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("appstore/Gravio Studio.pkg").expect("Expected infalable binary studio mac appstore path"),
                 },
                 metadata: Some(HashMap::from([
                     ("CFBundleName".into(), "Gravio Studio".into()),
@@ -228,7 +228,7 @@ lazy_static! {
                 package_type:PackageType::Apk,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioMonitor".to_owned(),
-                    teamcity_binary_path: "".to_owned(),
+                    teamcity_binary_path: PathBuf::new(),
                 },
                 metadata: None,
                 autorun: false,
@@ -245,7 +245,7 @@ lazy_static! {
                 id: "WindowsUpdateManagerExe".to_owned(),
                 package_type: PackageType::StandaloneExe,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_binary_path: "UpdateManager/build/win/ConfigurationManager.exe".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("UpdateManager/build/win/ConfigurationManager.exe").expect("Expected infalable binary exe configuration path"),
                     teamcity_id: "Gravio_UpdateManager".to_owned(),
                 },
                 metadata: None,
@@ -256,7 +256,7 @@ lazy_static! {
                 id: "MacUpdateManagerDmg".to_owned(),
                 package_type: PackageType::App,
                 teamcity_metadata: TeamCityMetadata {
-                    teamcity_binary_path: "UpdateManager/build/macOS/ConfigurationManager".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("UpdateManager/build/macOS/ConfigurationManager").expect("Expected infalable binary dmg configuration path"),
                     teamcity_id: "Gravio_UpdateManager4".to_owned(),
                 },
                 metadata: None,
@@ -275,7 +275,7 @@ lazy_static! {
                 package_type: PackageType::Msi,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioHubKit4".to_owned(),
-                    teamcity_binary_path: "GravioHubKit.msi".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("GravioHubKit.msi").expect("Expected infalable binary msi hubkit path"),
                 },
                 metadata: None,
                 autorun: false,
@@ -286,7 +286,7 @@ lazy_static! {
                 package_type: PackageType::App,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Gravio_GravioHubKit4".to_owned(),
-                    teamcity_binary_path: "GravioHubKit.dmg".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("GravioHubKit.dmg").expect("Expected infalable app hubkit path"),
                 },
                 metadata: Some(HashMap::from([
                     ("CFBundleName".into(), "Gravio HubKit".into()),
@@ -307,7 +307,7 @@ lazy_static! {
                 package_type: PackageType::MsiX,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Hubble_HubbleForWindows10".to_owned(),
-                    teamcity_binary_path: "handbookx.msix".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("handbookx.msix").expect("Expected infalable binary handbookx msix path"),
                 },
                 metadata: None,
                 autorun: false,
@@ -318,7 +318,7 @@ lazy_static! {
                 package_type: PackageType::MsiX,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Hubble_HubbleForWindows10".to_owned(),
-                    teamcity_binary_path: "sideloadinghandbookx.msix".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("sideloadinghandbookx.msix").expect("Expected infalable binary handbookx msix sideloading path"),
                 },
                 metadata: None,
                 autorun: false,
@@ -329,7 +329,7 @@ lazy_static! {
                 package_type: PackageType::Apk,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_id: "Hubble_2_HubbleFlutter".to_owned(),
-                    teamcity_binary_path: "handbookx-release.apk".to_owned(),
+                    teamcity_binary_path: PathBuf::from_str("handbookx-release.apk").expect("Expected infalable binary handbookx apkk path"),
                 },
                 metadata: None,
                 autorun: false,

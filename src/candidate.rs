@@ -256,8 +256,9 @@ impl InstallationCandidate {
 
     /// Returns the file name of the file this InstallationCandidate represents
     pub fn get_binary_file_name(&self) -> String {
-        PathBuf::from_str(&self.flavor.teamcity_metadata.teamcity_binary_path)
-            .unwrap()
+        self.flavor
+            .teamcity_metadata
+            .teamcity_binary_path
             .file_name()
             .unwrap()
             .to_str()
@@ -282,12 +283,18 @@ impl InstallationCandidate {
     }
 
     /// Gets the path of the file that the InstallationCandidate downloads to on disk
-    pub fn make_output_for_candidate(&self, dir: &Path) -> PathBuf {
+    pub fn make_output_for_candidate<P>(&self, dir: P) -> PathBuf
+    where
+        P: AsRef<Path>,
+    {
         let fname = &self.make_cached_file_name();
-        dir.join(fname)
+        dir.as_ref().join(fname)
     }
 
-    pub fn install(&self, binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn install<P>(&self, binary_path: P) -> Result<(), Box<dyn std::error::Error>>
+    where
+        P: AsRef<Path>,
+    {
         /* Try UWP */
         #[cfg(target_os = "windows")]
         if self.flavor.package_type == PackageType::AppX {
@@ -298,7 +305,7 @@ impl InstallationCandidate {
 
             let unzip_command = format!(
                 "Expand-Archive \"{}\" \"{}\" -force",
-                &binary_path.to_str().unwrap(),
+                &binary_path.as_ref().to_str().unwrap(),
                 &tmp_folder.to_str().unwrap()
             );
             /* extract zip to temporary directory */
@@ -361,7 +368,10 @@ impl InstallationCandidate {
         }
         /* Try misx */
         else if self.flavor.package_type == PackageType::MsiX {
-            let install_command = format!("Add-AppxPackage \"{}\"", binary_path.to_str().unwrap());
+            let install_command = format!(
+                "Add-AppxPackage \"{}\"",
+                binary_path.as_ref().to_str().unwrap()
+            );
             let install_output = Command::new("powershell")
                 .arg("-Command")
                 .arg(install_command)
@@ -381,7 +391,7 @@ impl InstallationCandidate {
             }
         } else if self.flavor.package_type == PackageType::Msi {
             let output = Command::new("msiexec")
-                .args(["/i", binary_path.to_str().unwrap()])
+                .args(["/i", binary_path.as_ref().to_str().unwrap()])
                 .output()?;
 
             // Check if the command was successful
@@ -410,7 +420,10 @@ impl InstallationCandidate {
 }
 
 #[cfg(target_os = "macos")]
-fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn install_mac<P>(binary_path: P) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: AsRef<Path>,
+{
     use fs_extra::dir::{self, CopyOptions};
     use indicatif::{ProgressBar, ProgressState, ProgressStyle};
     /* make temporary folder on system */
@@ -437,7 +450,7 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mount = {
         let output = Command::new("hdiutil")
             .arg("attach")
-            .arg(binary_path)
+            .arg(binary_path.as_ref().to_str().unwrap())
             .output()?;
 
         // Check if the command was successful
@@ -447,7 +460,7 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             let result = String::from_utf8_lossy(&output.stdout);
             let lines = result.split('\n');
 
-            let mut mount_point: Option<String> = None;
+            let mut mount_point: Option<PathBuf> = None;
             for line in lines {
                 let trimmed = line.trim();
                 let caps_volume: Vec<&str> = match MOUNTED_VOLUME_REGEX.captures(trimmed) {
@@ -460,7 +473,9 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 .skip(1)
                 .filter_map(|m| m.map(|m| m.as_str()))
                 .collect();
-                mount_point = Some(caps_volume.first().unwrap().to_string());
+                let mp = caps_volume.first().unwrap().to_string();
+                let pb = PathBuf::from_str(&mp).unwrap();
+                mount_point = Some(pb);
                 break;
             }
             mount_point
@@ -473,7 +488,8 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     match mount {
         Some(volume) => {
-            log::info!("Got mount point for application: {}", volume.as_str());
+            let vol_str = volume.to_owned().to_str().unwrap();
+            log::info!("Got mount point for application: {}", vol_str);
             log::info!("Checking if mounted contents are .app or .pkg");
 
             let package_type: Option<MacPackage> = {
@@ -485,24 +501,23 @@ fn install_mac(binary_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
                     let found_app = lines.iter().find(|x| x.ends_with(".app"));
                     match found_app {
                         Some(app_path) => {
-                            let full_path = PathBuf::from_str(&volume).unwrap().join(app_path);
+                            let full_path = volume.join(app_path);
 
                             Some(MacPackage {
                                 is_app: true,
                                 is_pkg: false,
-                                path: full_path.to_str().unwrap().to_string(),
+                                path: full_path,
                             })
                         }
                         None => {
                             let found_pkg = lines.iter().find(|x| x.ends_with(".pkg"));
                             match found_pkg {
                                 Some(app_path) => {
-                                    let full_path =
-                                        PathBuf::from_str(&volume).unwrap().join(app_path);
+                                    let full_path = volume.join(app_path);
                                     Some(MacPackage {
                                         is_app: false,
                                         is_pkg: true,
-                                        path: full_path.to_str().unwrap().to_string(),
+                                        path: full_path,
                                     })
                                 }
                                 None => None,
@@ -612,7 +627,11 @@ fn count_with_symlinks<P: AsRef<Path>, Q: AsRef<Path>>(
 }
 
 #[cfg(target_os = "macos")]
-fn unmount_mac(volume: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn unmount_mac<P>(volume: P) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: AsRef<Path>,
+{
+    let volume = volume.as_ref().as_os_str().to_str().unwrap();
     let output = Command::new("hdiutil")
         .arg("detach")
         .arg(&volume)
@@ -774,7 +793,7 @@ impl InstalledProduct {
 struct MacPackage {
     is_pkg: bool,
     is_app: bool,
-    path: String,
+    path: PathBuf,
 }
 
 #[cfg(target_os = "macos")]

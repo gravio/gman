@@ -326,14 +326,17 @@ pub async fn get_with_build_id_by_candidate<'a>(
 }
 
 /// Downloads the given artifact from the build server, first into the temp directory, and then moves it to the cache directory
-pub async fn download_artifact<'a>(
+pub async fn download_artifact<'a, P>(
     http_client: &reqwest::Client,
     candidate: &'a InstallationCandidate,
     repo: &CandidateRepository,
-    temp_dir: &Path,
-    cache_dir: &Path,
+    temp_dir: P,
+    cache_dir: P,
     chunk_size: u64,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
+) -> Result<PathBuf, Box<dyn std::error::Error>>
+where
+    P: AsRef<Path>,
+{
     log::debug!(
         "Contacting TeamCity for download link on candidate {}",
         &candidate.remote_id
@@ -345,7 +348,12 @@ pub async fn download_artifact<'a>(
             u,
             candidate.flavor.teamcity_metadata.teamcity_id,
             candidate.remote_id,
-            candidate.flavor.teamcity_metadata.teamcity_binary_path
+            candidate
+                .flavor
+                .teamcity_metadata
+                .teamcity_binary_path
+                .to_str()
+                .expect("Expected a valid binary path for downloading"),
         );
 
         let url = ensure_scheme(&uri_str)?;
