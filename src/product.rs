@@ -126,10 +126,10 @@ impl Flavor {
     pub fn empty() -> Self {
         Self {
             platform: Platform::platform_for_current_platform().unwrap(),
-            id: "--".to_owned(),
+            id: "--".into(),
             package_type: PackageType::Msi,
             teamcity_metadata: TeamCityMetadata {
-                teamcity_id: "--".to_owned(),
+                teamcity_id: "--".into(),
                 teamcity_binary_path: PathBuf::new(),
             },
             metadata: None,
@@ -148,12 +148,13 @@ impl Product {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
-    use plist::Value;
-
+    #[cfg(target_os = "macos")]
     #[test]
     fn test_parse_plist() {
+        use plist::Value;
+        use std::collections::HashMap;
+
         let plist_str = r#"
         <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
