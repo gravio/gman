@@ -2,6 +2,7 @@ use std::{borrow::Cow, env, fs, path::PathBuf, str::FromStr};
 
 use lazy_static::lazy_static;
 use serde::Deserialize;
+use serde_json5;
 
 use crate::{app, platform::Platform, product::Product};
 

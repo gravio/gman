@@ -547,6 +547,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "serde_json5",
  "shellexpand",
  "simple_logger",
  "tabled",
@@ -1448,6 +1449,17 @@ checksum = "c5f09b1bd632ef549eaa9f60a1f8de742bdbc698e6cee2095fc84dde5f549ae0"
 dependencies = [
  "itoa",
  "ryu",
+ "serde",
+]
+
+[[package]]
+name = "serde_json5"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32a6b754515e1a7bd79fc2edeaecee526fc80cb3a918607e5ca149225a3a9586"
+dependencies = [
+ "pest",
+ "pest_derive",
  "serde",
 ]
 

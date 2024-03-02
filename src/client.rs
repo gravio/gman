@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Read;
 use std::str::FromStr as _;
 
 use std::{fs::File, io::BufReader, process::Command};
@@ -44,13 +45,25 @@ impl Client {
     /// Loads the config file, if any, from the 'gman.config' next to the gman executable
     pub fn load_config() -> Result<ClientConfig, Box<dyn std::error::Error>> {
         log::debug!("Loading gman client configuration");
-        let file = File::open("./gman_config_client.json")?;
-        let reader = BufReader::new(file);
-
-        // Read the JSON contents of the file as an instance of `User`.
-        let config: ClientConfig = serde_json::from_reader(reader)?;
-        config.ensure_directories();
-        Ok(config)
+        match std::fs::read_to_string(app::CLIENT_CONFIG_FILE_NAME) {
+            Ok(s) => {
+                let config: ClientConfig = json5::from_str(&s)?;
+                config.ensure_directories();
+                Ok(config)
+            }
+            Err(e) => {
+                log::error!(
+                    "Tried to load {}, but got error: {}",
+                    app::CLIENT_CONFIG_FILE_NAME,
+                    e
+                );
+                Err(Box::new(GManError::new(&format!(
+                    "Tried to load {} but got error: {}",
+                    app::CLIENT_CONFIG_FILE_NAME,
+                    e
+                ))))
+            }
+        }
     }
 
     /// Deletes the temporary folder
