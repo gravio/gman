@@ -488,7 +488,7 @@ where
 
     match mount {
         Some(volume) => {
-            let vol_str = volume.to_owned().to_str().unwrap();
+            let vol_str = volume.to_string_lossy();
             log::info!("Got mount point for application: {}", vol_str);
             log::info!("Checking if mounted contents are .app or .pkg");
 
@@ -536,7 +536,7 @@ where
                 if package.is_app {
                     log::debug!(
                         "Inner contents are .app, will copy directly  from {} to {}",
-                        &package.path,
+                        &package.path.to_string_lossy(),
                         &MAC_APPLICATIONS_DIR,
                     );
 
