@@ -45,7 +45,7 @@ impl FromStr for Platform {
             "android" => Ok(Self::Android),
             "ios" => Ok(Self::IOS),
             "windows" => Ok(Self::Windows),
-            "macos" => Ok(Self::Mac),
+            "mac" | "macos" => Ok(Self::Mac),
             "rpi" => Ok(Self::RaspberryPi),
             "linux" => Ok(Self::Linux),
             _ => Err(GManError::new("Not a valid Platform string")),
