@@ -305,7 +305,6 @@ impl InstallationCandidate {
 
         #[cfg(target_os = "macos")]
         {
-            
             install_mac(binary_path)?;
             if self.flavor.autorun {
                 self.autorun_mac()?;
@@ -322,16 +321,16 @@ impl InstallationCandidate {
         log::info!("Attempting to automatically launch application");
         if let Some(metadata) = &self.flavor.metadata {
             if let Some(bundle_name) = metadata.get("CFBundleName") {
-                let output = Command::new("open")
-                .arg("-a")
-                .arg(bundle_name)
-                .output()?;
+                let output = Command::new("open").arg("-a").arg(bundle_name).output()?;
 
                 if output.status.success() {
                     return Ok(());
                 }
-                return Err(Box::new(GManError::new(&format!("Failed to launch {}: {}", bundle_name, output.status))));
-           }
+                return Err(Box::new(GManError::new(&format!(
+                    "Failed to launch {}: {}",
+                    bundle_name, output.status
+                ))));
+            }
         };
         Ok(())
     }
@@ -353,131 +352,130 @@ impl InstallationCandidate {
         //    }
         // };
         Ok(())
-    }    
+    }
 
-    #[cfg(target_os = "macos")]
-fn install_windows<P>(&self, binary_path: P) -> Result<(), Box<dyn std::error::Error>>
-where
-    P: AsRef<Path>,
-{
-         /* Try UWP */
-         if self.flavor.package_type == PackageType::AppX {
-             log::debug!("Creating a temporary file for this appx extraction");
- 
-             let tmp_folder = app::get_app_temp_directory().join(self.make_cached_file_name());
-             std::fs::create_dir_all(&tmp_folder)?;
- 
-             let unzip_command = format!(
-                 "Expand-Archive \"{}\" \"{}\" -force",
-                 &binary_path.as_ref().to_str().unwrap(),
-                 &tmp_folder.to_str().unwrap()
-             );
-             /* extract zip to temporary directory */
-             log::debug!("Sending extract-archive request to powershell");
-             let unzip_output = Command::new("powershell")
-                 .arg("-Command")
-                 .arg(unzip_command)
-                 .output()?;
- 
-             if !unzip_output.status.success() {
-                 // Convert the output bytes to a string
-                 log::debug!(
-                     "Failed to extract appx zip items: {}",
-                     unzip_output.status.code().unwrap()
-                 );
-                 return Err(Box::new(GManError::new(&format!(
-                     "Failed to install {}, couldn't extract to temp directory",
-                     self.product_name
-                 ))));
-             }
- 
-             /* run the  Install.ps1 */
-             match std::fs::read_dir(tmp_folder) {
-                 Ok(list_dir) => {
-                     for entry_result in list_dir {
-                         if let Ok(entry) = entry_result {
-                             if entry.metadata().unwrap().is_dir() {
-                                 let install_script_loc = entry.path().join("Install.ps1");
-                                 if Path::exists(&install_script_loc) {
-                                     log::debug!("found {} install.ps1 file", self.product_name);
-                                     let install_output = Command::new("powershell")
-                                         .arg("-Command")
-                                         .arg(install_script_loc.to_str().unwrap())
-                                         .output()?;
- 
-                                     if !install_output.status.success() {
-                                         log::debug!(
-                                             "Failed to install {}: {}",
-                                             self.product_name,
-                                             install_output.status.code().unwrap()
-                                         );
-                                         return Err(Box::new(GManError::new(
-                                                     &format!("Failed to install {}, couldn't run install script successfully", self.product_name),
-                                                 )));
-                                     }
-                                     return Ok(());
-                                 }
-                                 break;
-                             }
-                         }
-                     }
-                 }
-                 Err(_) => {
-                     log::error!("Failed to read temporary extracted directory");
-                     return Err(Box::new(GManError::new(
-                         "Failed to read temporary extracted directory",
-                     )));
-                 }
-             }
-         }
-         /* Try misx */
-         else if self.flavor.package_type == PackageType::MsiX {
-             let install_command = format!(
-                 "Add-AppxPackage \"{}\"",
-                 binary_path.as_ref().to_str().unwrap()
-             );
-             let install_output = Command::new("powershell")
-                 .arg("-Command")
-                 .arg(install_command)
-                 .output()?;
- 
-             if !install_output.status.success() {
-                 // Convert the output bytes to a string
-                 log::debug!(
-                     "Failed to install {}: {}",
-                     self.product_name,
-                     install_output.status.code().unwrap()
-                 );
-                 return Err(Box::new(GManError::new(&format!(
-                     "Failed to install {}, couldn't run MSIX installer successfully",
-                     self.product_name
-                 ))));
-             }
-         } else if self.flavor.package_type == PackageType::Msi {
-             let output = Command::new("msiexec")
-                 .args(["/i", binary_path.as_ref().to_str().unwrap()])
-                 .output()?;
- 
-             // Check if the command was successful
-             if output.status.success() {
-                 // Convert the output bytes to a string
-                 log::debug!("Successfully installed {}", self.product_name);
-                 return Ok(());
-             }
-             if output.status.code().unwrap_or_default() == 1602 {
-                 return Err(Box::new(GManError::new("User canceled installation")));
-             }
-             return Err(Box::new(GManError::new(
-                 "Unknown error occurred during installation",
-             )));
+    #[cfg(target_os = "windows")]
+    fn install_windows<P>(&self, binary_path: P) -> Result<(), Box<dyn std::error::Error>>
+    where
+        P: AsRef<Path>,
+    {
+        /* Try UWP */
+        if self.flavor.package_type == PackageType::AppX {
+            log::debug!("Creating a temporary file for this appx extraction");
+
+            let tmp_folder = app::get_app_temp_directory().join(self.make_cached_file_name());
+            std::fs::create_dir_all(&tmp_folder)?;
+
+            let unzip_command = format!(
+                "Expand-Archive \"{}\" \"{}\" -force",
+                &binary_path.as_ref().to_str().unwrap(),
+                &tmp_folder.to_str().unwrap()
+            );
+            /* extract zip to temporary directory */
+            log::debug!("Sending extract-archive request to powershell");
+            let unzip_output = Command::new("powershell")
+                .arg("-Command")
+                .arg(unzip_command)
+                .output()?;
+
+            if !unzip_output.status.success() {
+                // Convert the output bytes to a string
+                log::debug!(
+                    "Failed to extract appx zip items: {}",
+                    unzip_output.status.code().unwrap()
+                );
+                return Err(Box::new(GManError::new(&format!(
+                    "Failed to install {}, couldn't extract to temp directory",
+                    self.product_name
+                ))));
             }
 
-            log::warn!("Didnt install anything");
+            /* run the  Install.ps1 */
+            match std::fs::read_dir(tmp_folder) {
+                Ok(list_dir) => {
+                    for entry_result in list_dir {
+                        if let Ok(entry) = entry_result {
+                            if entry.metadata().unwrap().is_dir() {
+                                let install_script_loc = entry.path().join("Install.ps1");
+                                if Path::exists(&install_script_loc) {
+                                    log::debug!("found {} install.ps1 file", self.product_name);
+                                    let install_output = Command::new("powershell")
+                                        .arg("-Command")
+                                        .arg(install_script_loc.to_str().unwrap())
+                                        .output()?;
 
-            Ok(())
+                                    if !install_output.status.success() {
+                                        log::debug!(
+                                            "Failed to install {}: {}",
+                                            self.product_name,
+                                            install_output.status.code().unwrap()
+                                        );
+                                        return Err(Box::new(GManError::new(
+                                                     &format!("Failed to install {}, couldn't run install script successfully", self.product_name),
+                                                 )));
+                                    }
+                                    return Ok(());
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    log::error!("Failed to read temporary extracted directory");
+                    return Err(Box::new(GManError::new(
+                        "Failed to read temporary extracted directory",
+                    )));
+                }
+            }
         }
-}
+        /* Try misx */
+        else if self.flavor.package_type == PackageType::MsiX {
+            let install_command = format!(
+                "Add-AppxPackage \"{}\"",
+                binary_path.as_ref().to_str().unwrap()
+            );
+            let install_output = Command::new("powershell")
+                .arg("-Command")
+                .arg(install_command)
+                .output()?;
 
+            if !install_output.status.success() {
+                // Convert the output bytes to a string
+                log::debug!(
+                    "Failed to install {}: {}",
+                    self.product_name,
+                    install_output.status.code().unwrap()
+                );
+                return Err(Box::new(GManError::new(&format!(
+                    "Failed to install {}, couldn't run MSIX installer successfully",
+                    self.product_name
+                ))));
+            }
+        } else if self.flavor.package_type == PackageType::Msi {
+            let output = Command::new("msiexec")
+                .args(["/i", binary_path.as_ref().to_str().unwrap()])
+                .output()?;
+
+            // Check if the command was successful
+            if output.status.success() {
+                // Convert the output bytes to a string
+                log::debug!("Successfully installed {}", self.product_name);
+                return Ok(());
+            }
+            if output.status.code().unwrap_or_default() == 1602 {
+                return Err(Box::new(GManError::new("User canceled installation")));
+            }
+            return Err(Box::new(GManError::new(
+                "Unknown error occurred during installation",
+            )));
+        }
+
+        log::warn!("Didnt install anything");
+
+        Ok(())
+    }
+}
 
 #[cfg(target_os = "macos")]
 fn install_mac<P>(binary_path: P) -> Result<(), Box<dyn std::error::Error>>
