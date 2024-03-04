@@ -39,7 +39,7 @@ a Software Bill-of-Materials is generated after each build, located at
 # Examples
 
 ```bash
-$ .\target\release\graviomanager.exe -h
+$ graviomanager -h
 
 Manages Asteria products on a machine
 
@@ -62,7 +62,7 @@ Options:
 ## Show installed items
 
 ```cmd
-$ .\target\release\graviomanager.exe installed
+$ graviomanager installed
 
 ┌──────────────┬────────────┬─────────────────────────────────────────────────────────────┐
 │     Name     │  Version   │                         Identifier                          │
@@ -72,10 +72,12 @@ $ .\target\release\graviomanager.exe installed
 └──────────────┴────────────┴─────────────────────────────────────────────────────────────┘
 ```
 
+<img src="docs/installed.webp" height="200" width="600">
+
 ## Show available items to install
 
 ```cmd
-$ .\target\release\graviomanager.exe list --show-installed
+$ graviomanager list --show-installed
 
 ┌───────────────┬────────────┬───────────────────────┬─────────────────────────┬───────────┐
 │     Name      │  Version   │      Identifier       │         Flavor          │ Installed │
@@ -105,20 +107,33 @@ $ .\target\release\graviomanager.exe list --show-installed
 └───────────────┴────────────┴───────────────────────┴─────────────────────────┴───────────┘
 ```
 
+<img src="docs/list.webp" height="350" width="600">
 ## Uninstall a product
 
 ```cmd
-$ .\target\release\graviomanager.exe uninstall graviostudio
+$ graviomanager uninstall graviostudio
 
 Looking to uninstall an item: graviostudio
 Found uninstallation target. Attempting to uninstall GravioStudio                                                                                           
 Successfully uninstalled GravioStudio
 ```
 
+## Uninstall a product
+
+```bash
+$ graviomanager uninstall graviostudio
+
+Looking to uninstall an item: graviostudio
+Found uninstallation target. Attempting to uninstall GravioStudio
+Successfully uninstalled GravioStudio
+```
+
+<img src="docs/uninstall.webp" height="350" width="600">
+
 ## Install a product
 
 ```
- $ .\target\release\graviomanager.exe install graviostudio develop
+ $ graviomanager install graviostudio develop
 
  
 Installing graviostudio@develop, flavor WindowsAppStore
@@ -129,6 +144,8 @@ Will search for more recent versions, and will use this cached item as fallback
 Found a version on the server for this identifier that is greater than the one in cache (cached: 5.2.4670, found: 5.2.4683), will download and install from remote
 Successfully Installed graviostudio
 ```
+
+<img src="docs/install.webp" height="350" width="600">
 
 Installation takes a few fields:
 
