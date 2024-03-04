@@ -5,7 +5,7 @@ target_dir="./target/release"
 cargo build $mode
 
 # generate sbom
-cargo sbom > $target_dir\sbom.spdx
+cargo-sbom > $target_dir/sbom.spdx
 
 # generate checksum of artifacts
 checksums -v -c $target_dir --force
