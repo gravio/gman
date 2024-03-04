@@ -35,33 +35,21 @@ pub struct TablePrinter {
 impl Into<TablePrinter> for InstallationCandidate {
     fn into(self) -> TablePrinter {
         TablePrinter {
-            identifier: self.identifier.to_owned(),
-            name: self.product_name.to_owned(),
+            identifier: self.identifier,
+            name: self.product_name,
             version: self.version.into(),
-            flavor: self.flavor.id.to_owned(),
+            flavor: self.flavor.id,
             installed: self.installed,
         }
     }
 }
 
-impl Into<TablePrinter> for InstalledProduct {
-    fn into(self) -> TablePrinter {
+impl From<InstalledProduct> for TablePrinter {
+    fn from(value: InstalledProduct) -> Self {
         TablePrinter {
-            identifier: self.package_name.to_owned(),
-            name: self.product_name.to_owned(),
-            version: self.version.into(),
-            flavor: String::default(),
-            installed: true,
-        }
-    }
-}
-
-impl From<&InstalledProduct> for TablePrinter {
-    fn from(value: &InstalledProduct) -> Self {
-        TablePrinter {
-            identifier: value.package_name.to_owned(),
-            name: value.product_name.to_owned(),
-            version: value.version.0.to_owned(),
+            identifier: value.package_name,
+            name: value.product_name,
+            version: value.version.0,
             flavor: String::default(),
             installed: true,
         }
