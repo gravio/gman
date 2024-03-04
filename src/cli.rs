@@ -1,6 +1,9 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::str::FromStr;
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use clap::{Parser, Subcommand};
 
@@ -10,6 +13,9 @@ use crate::gman_error::GManError;
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct Cli {
+    /// Determines where to load the configuration json from
+    pub config_path: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -29,14 +35,18 @@ pub enum Commands {
     Uninstall { name: String, ver: Option<String> },
     /// Installs the [candidate] with optional [version]
     Install {
+        #[clap(
+            help = "Product name, taken from the `products` section of the gman_client_config.json5"
+        )]
         name: String,
+        #[clap(help = "Build number, or git branch/tag")]
         build_or_branch: Option<String>,
         #[clap(short, long, help = "Product flavor (e.g.,, Sideloading, Arm64 etc)")]
         flavor: Option<String>,
         #[clap(
             short,
             long,
-            help = "Whether to find newer build versions, if `build` isnt specified. Leave empty to be prompted."
+            help = "Whether to find newer build versions, if a build number isnt specified. Leave empty to be prompted."
         )]
         automatic_upgrade: Option<bool>,
     },

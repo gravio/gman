@@ -1,10 +1,17 @@
-use std::{borrow::Cow, collections::HashMap, env, fs, path::PathBuf, str::FromStr};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    env, fs,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     app,
+    gman_error::GManError,
     platform::{self, Platform},
     product::{self, Flavor, Product, TeamCityMetadata},
 };
@@ -119,6 +126,38 @@ pub(crate) struct ClientConfig {
     pub products: Vec<Product>,
 }
 impl ClientConfig {
+    /// Loads the config file, if any, from the 'gman.config' next to the gman executable
+    pub fn load_config<P>(path: Option<P>) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        P: AsRef<Path>,
+    {
+        log::debug!("Loading gman client configuration");
+        let p: PathBuf = match path {
+            Some(p) => p.as_ref().to_path_buf(),
+            None => Path::new(app::CLIENT_CONFIG_FILE_NAME).to_owned(),
+        };
+
+        match std::fs::read_to_string(&p) {
+            Ok(s) => {
+                let config: ClientConfig = json5::from_str(&s)?;
+                config.ensure_directories();
+                Ok(config)
+            }
+            Err(e) => {
+                log::error!(
+                    "Tried to load {}, but got error: {}",
+                    &p.to_string_lossy(),
+                    e
+                );
+                Err(Box::new(GManError::new(&format!(
+                    "Tried to load {} but got error: {}",
+                    &p.to_string_lossy(),
+                    e
+                ))))
+            }
+        }
+    }
+
     /// Creates a sample config suitable for outputting into a json file, for demonstration and rebuilding a config purposes
     pub fn make_sample() -> Self {
         Self {

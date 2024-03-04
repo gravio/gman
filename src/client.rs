@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::Read;
+use std::path::Path;
 use std::str::FromStr as _;
 
 use std::{fs::File, io::BufReader, process::Command};
@@ -16,6 +17,7 @@ use crate::product::PackageType;
 use crate::product::Product;
 use crate::{app, product, team_city, util, CandidateRepository, ClientConfig};
 
+use clap::builder::OsStr;
 use tabled::settings::{object::Rows, Alignment, Modify, Style};
 
 pub struct Client {
@@ -24,7 +26,7 @@ pub struct Client {
 }
 impl Client {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let client_config = Client::load_config()?;
+        let client_config = ClientConfig::load_config::<OsStr>(None)?;
         app::init_logging();
         app::enable_logging(client_config.log_level);
         let c = Client::new(client_config);
@@ -34,35 +36,18 @@ impl Client {
 
         Ok(c)
     }
+
+    pub fn init(&self) {
+        app::init_logging();
+        app::enable_logging(self.config.log_level);
+        self.clear_temp();
+    }
+
     pub fn new(config: ClientConfig) -> Self {
         log::debug!("Instantiating new gman client");
         Self {
             config,
             http_client: reqwest::Client::builder().build().unwrap(),
-        }
-    }
-
-    /// Loads the config file, if any, from the 'gman.config' next to the gman executable
-    pub fn load_config() -> Result<ClientConfig, Box<dyn std::error::Error>> {
-        log::debug!("Loading gman client configuration");
-        match std::fs::read_to_string(app::CLIENT_CONFIG_FILE_NAME) {
-            Ok(s) => {
-                let config: ClientConfig = json5::from_str(&s)?;
-                config.ensure_directories();
-                Ok(config)
-            }
-            Err(e) => {
-                log::error!(
-                    "Tried to load {}, but got error: {}",
-                    app::CLIENT_CONFIG_FILE_NAME,
-                    e
-                );
-                Err(Box::new(GManError::new(&format!(
-                    "Tried to load {} but got error: {}",
-                    app::CLIENT_CONFIG_FILE_NAME,
-                    e
-                ))))
-            }
         }
     }
 

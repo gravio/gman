@@ -12,7 +12,6 @@ use candidate::{InstallationCandidate, Version};
 use clap::Parser;
 use cli::Commands;
 use client_config::*;
-use std::fs;
 use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
@@ -25,10 +24,19 @@ use crate::client::Client;
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli = Cli::parse();
 
+    let config = match ClientConfig::load_config(cli.config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to load configuration file: {}", e);
+            exit(1);
+        }
+    };
+
     match &cli.command {
         /* List */
         Some(Commands::Cache { clear, list: _ }) => {
-            let client = Client::load().expect("Couldnt load client");
+            let client = Client::new(config);
+            client.init();
 
             if *clear {
                 match client.clear_cache() {
@@ -59,7 +67,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             exit(0);
         }
         Some(Commands::List { show_installed }) => {
-            let client = Client::load().expect("Couldnt load client");
+            let client = Client::new(config);
+            client.init();
+
             let mut candidates = client
                 .list_candidates(None, None)
                 .await
@@ -103,8 +113,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         /* Uninstall */
         Some(Commands::Uninstall { name, ver }) => {
-            let c = Client::load().expect("Couldnt load client");
-            let _ = c.uninstall(&name, ver.to_owned().map(|x| Version::new(&x)));
+            let client = Client::new(config);
+            client.init();
+
+            let _ = client.uninstall(&name, ver.to_owned().map(|x| Version::new(&x)));
             exit(0)
         }
         /* Install */
@@ -114,7 +126,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             flavor,
             automatic_upgrade,
         }) => {
-            let client = Client::load().expect("Couldnt load client");
+            let client = Client::new(config);
+            client.init();
 
             /* find product */
             let target: Target = match build_or_branch {
@@ -158,23 +171,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
         Some(Commands::Installed) => {
-            let client = Client::load().expect("Couldnt load client");
+            let client = Client::new(config);
+            client.init();
             let candidates = client.get_installed();
             client.format_candidate_table(candidates, false, false);
             exit(0)
         }
         Some(Commands::Config { sample }) => {
             if *sample {
-                let c = ClientConfig::make_sample();
+                let client = ClientConfig::make_sample();
                 let name = app::CLIENT_CONFIG_FILE_NAME;
                 let path = PathBuf::from_str("./")
                     .expect("Expected to make a valid path in current directory");
 
                 let mut joined = path.join(name);
                 let mut num: usize = 0;
-                const max: usize = 200;
+                const MAX: usize = 200;
                 while joined.exists() {
-                    if num >= max {
+                    if num >= MAX {
                         eprintln!("Cannot create sample file, maximum number of tried exceeded (200). Try deleting files named {}", app::CLIENT_CONFIG_FILE_NAME);
                         exit(1);
                     }
@@ -182,11 +196,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     let name = format!("{}.{}", name, num);
                     joined = path.join(name);
                 }
-                let stringified = serde_json::to_string_pretty(&c)
+                let stringified = serde_json::to_string_pretty(&client)
                     .expect("Expected to deserialize sample config json");
                 std::fs::write(joined, stringified)?;
             }
         }
+
         None => {
             println!("use -h or --help to show help for this program");
         }
