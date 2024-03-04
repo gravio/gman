@@ -132,30 +132,94 @@ impl ClientConfig {
         P: AsRef<Path>,
     {
         log::debug!("Loading gman client configuration");
-        let p: PathBuf = match path {
-            Some(p) => p.as_ref().to_path_buf(),
-            None => Path::new(app::CLIENT_CONFIG_FILE_NAME).to_owned(),
+
+        let p_handed_in: Option<PathBuf> = match path {
+            Some(handed_in) => Some(handed_in.as_ref().to_path_buf()),
+            None => None,
         };
 
-        match std::fs::read_to_string(&p) {
-            Ok(s) => {
-                let config: ClientConfig = json5::from_str(&s)?;
-                config.ensure_directories();
-                Ok(config)
-            }
-            Err(e) => {
-                log::error!(
-                    "Tried to load {}, but got error: {}",
-                    &p.to_string_lossy(),
-                    e
-                );
-                Err(Box::new(GManError::new(&format!(
-                    "Tried to load {} but got error: {}",
-                    &p.to_string_lossy(),
-                    e
-                ))))
+        let try_first_pass = vec![
+            p_handed_in,
+            Some(std::env::current_dir().unwrap().to_path_buf()),
+            // Some(
+            //     std::env::current_exe()
+            //         .unwrap()
+            //         .parent()
+            //         .unwrap()
+            //         .to_path_buf(),
+            // ),
+        ];
+
+        for path_opt in try_first_pass {
+            match path_opt {
+                Some(p) => {
+                    log::debug!(
+                        "Attempting to load configuration from {}",
+                        &p.to_string_lossy()
+                    );
+
+                    /* if directory, append the constant name, otherwise use as-is */
+                    let p = if p.is_dir() {
+                        p.join(app::CLIENT_CONFIG_FILE_NAME)
+                    } else {
+                        p
+                    };
+
+                    match std::fs::read_to_string(&p) {
+                        Ok(s) => {
+                            let config: ClientConfig = json5::from_str(&s)?;
+                            config.ensure_directories();
+                            return Ok(config);
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "Tried to load {}, but got error: {}",
+                                &p.to_string_lossy(),
+                                e
+                            );
+                        }
+                    }
+                }
+                None => {
+                    continue;
+                }
             }
         }
+
+        log::debug!("Didn't find configuration file in either the handed-in path, or the users Current Working Directory. Starting search from exe directory");
+
+        let mut from_exe = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .map(|x| x.to_path_buf());
+
+        while let Some(ref dir) = from_exe {
+            log::debug!(
+                "Attempting to load configuration from {}",
+                &dir.to_string_lossy()
+            );
+            let full = dir.join(app::CLIENT_CONFIG_FILE_NAME);
+            match std::fs::read_to_string(&full) {
+                Ok(s) => {
+                    log::info!("Found configuration at {}", full.to_string_lossy());
+                    let config: ClientConfig = json5::from_str(&s)?;
+                    config.ensure_directories();
+                    return Ok(config);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Tried to load {}, but got error: {}",
+                        &full.to_string_lossy(),
+                        e
+                    );
+                    from_exe = dir.parent().map(|x| x.to_path_buf());
+                }
+            }
+        }
+
+        Err(Box::new(GManError::new(&format!(
+            "Tried to load config but no config was found in any known location",
+        ))))
     }
 
     /// Creates a sample config suitable for outputting into a json file, for demonstration and rebuilding a config purposes
@@ -347,6 +411,8 @@ impl ClientConfig {
 
 #[cfg(test)]
 mod test {
+    use clap::builder::OsStr;
+
     use crate::ClientConfig;
 
     #[test]
@@ -367,13 +433,17 @@ mod test {
         assert!(!expanded.starts_with("~/"))
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
     fn expand_tmp_win() {
-        #[cfg(target_os = "windows")]
-        {
-            let s = "%temp%/file.txt";
-            let expanded = ClientConfig::shell_expand(s);
-            assert!(!expanded.starts_with("%temp%"))
-        }
+        let s = "%temp%/file.txt";
+        let expanded = ClientConfig::shell_expand(s);
+        assert!(!expanded.starts_with("%temp%"))
+    }
+
+    #[test]
+    fn load_from_local() {
+        let opt = ClientConfig::load_config::<OsStr>(None);
+        assert!(opt.is_ok())
     }
 }

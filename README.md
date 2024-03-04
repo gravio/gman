@@ -161,6 +161,9 @@ searched for in the following order:
 
 - As specified by a leading `config-path` argument if supplied,
 - Current working directory of the process / shell (`./`)
+- Directory the gman executable is located in
+- Every parent directory of the executable, popped one by one until the root of
+  the filesystem
 
 If the file is not found, you can run the following commands to generate a new
 one in your current working directory:

@@ -1,9 +1,6 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{path::PathBuf, str::FromStr};
 
 use clap::{Parser, Subcommand};
 

@@ -299,7 +299,7 @@ impl InstallationCandidate {
         {
             self.install_windows(binary_path)?;
             if self.flavor.autorun {
-                self.autorun_windows();
+                self.autorun_windows()?;
             }
         }
 

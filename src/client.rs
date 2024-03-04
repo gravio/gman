@@ -1,9 +1,7 @@
 use std::fs;
-use std::io::Read;
-use std::path::Path;
 use std::str::FromStr as _;
 
-use std::{fs::File, io::BufReader, process::Command};
+use std::process::Command;
 
 #[cfg(target_os = "windows")]
 use crate::candidate::InstalledAppXProduct;
@@ -883,7 +881,7 @@ mod tests {
         candidate::SearchCandidate,
         cli::Target,
         platform::Platform,
-        product::{self, Flavor, PackageType, Product, TeamCityMetadata},
+        product::{Flavor, PackageType, Product, TeamCityMetadata},
         team_city, Client,
     };
     use lazy_static::lazy_static;

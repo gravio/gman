@@ -196,7 +196,7 @@ pub async fn get_builds<'a>(
                     }
                 }
             }
-        } else if let Some(repo_path) = &repo.repository_folder {
+        } else if let Some(_repo_path) = &repo.repository_folder {
             log::debug!("Repo defined a local path, will fetch from file system");
             todo!()
         }
@@ -314,7 +314,7 @@ pub async fn get_with_build_id_by_candidate<'a>(
                     continue;
                 }
             }
-        } else if let Some(repo_path) = &repo.repository_folder {
+        } else if let Some(_repo_path) = &repo.repository_folder {
             log::debug!("Repo defined a local path, will fetch from file system");
             todo!()
         }

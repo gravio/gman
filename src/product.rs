@@ -1,8 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use serde_json5;
 
 use crate::{gman_error::GManError, platform::Platform};
 
