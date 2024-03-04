@@ -454,7 +454,7 @@ impl InstallationCandidate {
             }
         } else if self.flavor.package_type == PackageType::Msi {
             let output = Command::new("msiexec")
-                .args(["/i", binary_path.as_ref().to_str().unwrap()])
+                .args(["/i", binary_path.as_ref().to_str().unwrap(), "/passive"])
                 .output()?;
 
             // Check if the command was successful
@@ -757,7 +757,7 @@ impl InstalledProduct {
             ))));
         } else if self.package_type == PackageType::Msi {
             let output = Command::new("msiexec")
-                .args(["/x", self.package_name.as_str()])
+                .args(["/x", self.package_name.as_str(), "/passive"])
                 .output()?;
 
             // Check if the command was successful
