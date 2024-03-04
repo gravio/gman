@@ -30,6 +30,12 @@ Run the build script, which also takes care of post-build steps
 build.ps1
 ```
 
+# SBOM and Checksum
+
+a Software Bill-of-Materials is generated after each build, located at
+`sbom.sbdx`. A checksum of the build artifacts is also produced, locatedt at
+`release.hash`
+
 # Examples
 
 ```bash
@@ -153,9 +159,8 @@ recent successful build will be installed.
 The data gman works with comes from the `gman_config_client.json5`. This file is
 searched for in the following order:
 
-- As specified by the `--config-path` argument
-- Current working directory of the process / shell
-- Next to the gman executable file
+- As specified by a leading `config-path` argument if supplied,
+- Current working directory of the process / shell (`./`)
 
 If the file is not found, you can run the following commands to generate a new
 one in your current working directory:
@@ -163,3 +168,133 @@ one in your current working directory:
 ```bash
 gman.exe config --sample
 ```
+
+<details>
+<summary>Configuration example file</summary>
+
+`gman_client_config.json5`
+
+```json5
+{
+    /* 
+        Log levels to allow for higher diagnostics printing to console
+       Allowed values include: 
+        - Off
+        - Trace
+        - Debug
+        - Info
+        - Warn
+        - Error
+    */
+  "LogLevel": "OFF",
+
+  
+    /*
+        Repositories to search for installation cadidates and updates
+
+        Credentials can either be a BearerToken (access token), acquired via the TeamCity webpanel for your user under Profile,
+        or your Username/Password
+    */
+  "Repositories": [
+    {
+      "Name": "SampleRepository", // User defined name of the repository
+      "RepositoryType": "TeamCity", // Type of repository fyi:(nf, 3/2/24): Only TeamCity is supported 
+    // Platform for Binary artifacts found on the repository. Valid platform values are { Windows, Mac, }
+      "Platforms": [
+        "Windows",
+        "Mac"
+      ],
+      "RepositoryServer": "yourbuildserver.yourcompany.example.com", // address of the server
+      "RepositoryCredentials": {
+        "Type": "BearerToken", // either `BearerToken` or `BasicAuth`
+        "Token": "your_token" // API key from TeamCity
+      },
+      "Products": [
+        "SampleProduct" // Products that this repository handles, defined by the `Products` array lower downs
+      ]
+    }
+  ],
+  // Mostly just for windows, used to match AppX, MSI, and MSIX installer identities
+  "PublisherIdentities": [
+    {
+      "Name": "SomeCompany Windows Identifier", // Display name for the publisher
+      "Id": "CN=ab94ddc1-6575-33ed-8832-1a5d98a25117", // String that will be matched against inside the binary metadata
+      "Platforms": [
+        // Platforms this identity is valid for
+        "Windows"
+      ],
+      "Products": [
+        // (Optional) products this identity is valid for
+        "SomeProduct"
+      ]
+    }
+  ],
+  // Array of actual products found on the build servers. This is what is listed, installed and uninstalled
+  "Products": [
+    {
+      "Name": "SampleProduct", // User defined name of the product. This will appear in the printed CLI output
+      // One product can have multiple different flavors of actual binary artifact, such as for Sideloading, or Docker, or Mac/Windows versions
+      "Flavors": [
+        {
+          "Platform": "Windows", // Target platform of the binary
+          "Id": "UWP", // User defined Id of this flavor
+          "TeamCityMetadata": {
+            "TeamCityId": "SomeUwpSample", // TeamCity project id
+            "TeamCityBinaryPath": "path/to/WindowsUWP.zip" // Path on TeamCity to the final artifact
+          },
+          "PackageType": "AppX", // Type of Package. Valid values are one of { Msi, MsiX, AppX, App, Dmg, Pkg, Apk, Ipa }
+          // Flavor-specific metadata used for matching products on the users machine
+          "Metadata": {
+            // for UWP (Appx) binaries, this is the name of the product as known to Microsoft
+            "NameRegex": "some.uwp.sampleproduct"
+          },
+          // If true, will attempt to launch the application automoatically after installation
+          "Autorun": false
+        },
+        {
+          "Platform": "Mac",
+          "Id": "MacApp",
+          "TeamCityMetadata": {
+            "TeamCityId": "SomeMacSample",
+            "TeamCityBinaryPath": "path/to/MacApp.dmg"
+          },
+          "PackageType": "App",
+          "Metadata": {
+            // The Id of the publisher/app as known to Apple
+            "CFBundleIdentifier": "com.somecompany.sampleproduct",
+            // The name of the app as known to Apple
+            "CFBundleName": "SampleProduct"
+          },
+          "Autorun": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+</details>
+
+### PackageType
+
+| Package Type | Platform | Description                          |
+| ------------ | -------- | ------------------------------------ |
+| Msi          | Windows  | Traditional Microsoft .msi installer |
+| MsiX         | Windows  | Modern Microsoft installer           |
+| AppX         | Windows  | Windows UWP package type             |
+| App          | macOS    | Mac .App package type                |
+| Pkg          | macOS    | Mac .pkg package type                |
+| Apk          | Android  | Android apk package type             |
+| Ipa          | iOS      | iOS app package type                 |
+
+### Platform
+
+| Platform     | String  |
+| ------------ | ------- |
+| Windows      | Windows |
+| Mac          | macOS   |
+| Linux        | Linux   |
+| Android      | Android |
+| iOS          | iOS     |
+| Docker       | Docker  |
+| Raspberry Pi | rpi     |
