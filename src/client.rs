@@ -877,11 +877,7 @@ mod tests {
     use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
     use crate::{
-        candidate::SearchCandidate,
-        cli::Target,
-        platform::Platform,
-        product::{Flavor, PackageType, Product, TeamCityMetadata},
-        team_city, Client,
+        app, candidate::SearchCandidate, cli::Target, platform::Platform, product::{Flavor, PackageType, Product, TeamCityMetadata}, team_city, Client
     };
     use lazy_static::lazy_static;
 
@@ -1409,6 +1405,7 @@ mod tests {
     #[tokio::test]
     async fn download_develop_hubkit() {
         let client = Client::load().expect("Failed to load client");
+        app::enable_logging(log::LevelFilter::Error);
         let vv = client.get_valid_repositories_for_platform();
         let p = &PRODUCT_GRAVIO_HUBKIT;
 

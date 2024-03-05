@@ -226,25 +226,30 @@ pub async fn get_with_build_id_by_candidate<'a>(
 
             let mut url = ensure_scheme(&repo_url)?;
             url.set_path("app/rest/builds");
-            let filter_for = if candidate.version.is_some() {
-                format!(
-                    "number:{}",
-                    &<std::option::Option<Version> as Clone>::clone(&candidate.version)
-                        .unwrap()
-                        .as_ref()
+
+            let (filter_for, policy) = if candidate.version.is_some() {
+                (
+                    format!(
+                        "number:{}",
+                        &<std::option::Option<Version> as Clone>::clone(&candidate.version)
+                            .unwrap()
+                            .as_ref()
+                    ),
+                    "default:false,policy:ALL_BRANCHES",
                 )
             } else {
-                format!("branch:{}", &candidate.identifier.as_ref().unwrap())
+                (
+                    format!("branch:{}", &candidate.identifier.as_ref().unwrap()),
+                    "default:false",
+                )
             };
-            url.query_pairs_mut()
-                .append_key_only("default:false,policy:ALL_BRANCHES")
-                .append_pair(
-                    "locator",
-                    &format!(
-                        "buildType:{},count:1,{}",
-                        &candidate.flavor.teamcity_metadata.teamcity_id, &filter_for
-                    ),
-                );
+            url.query_pairs_mut().append_key_only(policy).append_pair(
+                "locator",
+                &format!(
+                    "buildType:{},count:1,status:SUCCESS,{}",
+                    &candidate.flavor.teamcity_metadata.teamcity_id, &filter_for
+                ),
+            );
 
             let request: reqwest::Request = match &repo.repository_credentials {
                 Some(credentials) => {
@@ -389,7 +394,10 @@ where
             }
             if res_status == 404 {
                 eprintln!("File not found on repo {}", &repo.name);
-                return Err(Box::new(GManError::new("File not found")));
+                return Err(Box::new(GManError::new(&format!(
+                    "File not found on repository {}",
+                    &repo.name
+                ))));
             }
             return Err(Box::new(GManError::new(
                 "Unknown error occurred during download request",
