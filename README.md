@@ -318,3 +318,11 @@ gman.exe config --sample
 | iOS          | iOS     |
 | Docker       | Docker  |
 | Raspberry Pi | rpi     |
+
+# Acquiring TeamCity credentials
+
+<img src="docs/teamcity_access_token.png">
+
+Make sure the access token has the same priveliges as your user. TeamCity does
+not let you scope your access token to just viewing project data, so it must
+inherit from your user.
