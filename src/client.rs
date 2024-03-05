@@ -18,6 +18,7 @@ use crate::{app, product, team_city, util, CandidateRepository, ClientConfig};
 use clap::builder::OsStr;
 use tabled::settings::{object::Rows, Alignment, Modify, Style};
 
+#[derive(Debug)]
 pub struct Client {
     pub config: ClientConfig,
     http_client: reqwest::Client,

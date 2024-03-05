@@ -500,6 +500,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct PartialRangeIter {
     start: u64,
     end: u64,

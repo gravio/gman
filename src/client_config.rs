@@ -141,13 +141,6 @@ impl ClientConfig {
         let try_first_pass = vec![
             p_handed_in,
             Some(std::env::current_dir().unwrap().to_path_buf()),
-            // Some(
-            //     std::env::current_exe()
-            //         .unwrap()
-            //         .parent()
-            //         .unwrap()
-            //         .to_path_buf(),
-            // ),
         ];
 
         for path_opt in try_first_pass {

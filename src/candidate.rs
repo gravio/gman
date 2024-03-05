@@ -18,7 +18,7 @@ use crate::{
 };
 use lazy_static::lazy_static;
 
-#[derive(Tabled)]
+#[derive(Tabled, Debug)]
 pub struct TablePrinter {
     #[tabled(order = 0)]
     pub name: String,
@@ -56,6 +56,7 @@ impl From<InstalledProduct> for TablePrinter {
     }
 }
 
+#[derive(Debug)]
 pub struct SearchCandidate {
     pub product_name: String,
 
@@ -784,6 +785,7 @@ impl InstalledProduct {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[derive(Debug)]
 struct MacPackage {
     is_pkg: bool,
     is_app: bool,
@@ -916,7 +918,7 @@ fn shutdown_program_mac(installed: &InstalledProduct) -> Result<(), Box<dyn std:
 }
 
 #[cfg(windows)]
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct InstalledAppXProduct {
     #[serde(rename = "Name")]
     pub name: String,
