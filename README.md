@@ -171,6 +171,26 @@ Build Or Branch takes either a specific version (e.g., `5.2.1.7333`), or a
 branch/tag, (e.g., `develop`, `test_oauth`, etc). If given a branch, the most
 recent successful build will be installed.
 
+# Getting detailed logging info
+
+Run the program with the `--log-level` comamand to override any logging
+information in the configuration file and get detailed output to the console:
+
+```bash
+$ graviomanager installed --log-level trace
+
+2024-03-05T04:36:58.596Z DEBUG [graviomanager::client_config] Loading gman client configuration
+2024-03-05T04:36:58.596Z DEBUG [graviomanager::client_config] Attempting to load configuration from ./gman_config_client.json5
+2024-03-05T04:36:58.596Z DEBUG [graviomanager::client_config] Found configuration
+2024-03-05T04:36:58.605Z DEBUG [graviomanager::client] Instantiating new gman client
+2024-03-05T04:36:58.606Z DEBUG [graviomanager::client] Clearing temporary folders
+2024-03-05T04:36:58.606Z DEBUG [graviomanager::client] Getting installed Gravio items
+2024-03-05T04:36:59.218Z DEBUG [graviomanager::client] Formatting candidate list with 2 candidates
+```
+
+The supplied level is the maximum level to display. Set to `Error` for
+everything.
+
 # Configuration
 
 The data gman works with comes from the `gman_config_client.json5`. This file is
