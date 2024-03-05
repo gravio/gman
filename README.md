@@ -32,9 +32,9 @@ build.ps1
 
 # SBOM and Checksum
 
-a Software Bill-of-Materials is generated after each build, located at
-`sbom.sbdx`. A checksum of the build artifacts is also produced, locatedt at
-`release.hash`
+a Software Bill-of-Materials in SBDX format is generated after each build,
+located at `sbom.json`. A checksum of the build artifacts is also produced,
+locatedt at `release.hash`
 
 # Examples
 

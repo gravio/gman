@@ -23,12 +23,12 @@ fi
 cargo build $mode
 
 # generate sbom
-cargo-sbom > $target_dir/sbom.spdx
+cargo-sbom > $target_dir/sbom.json
 
 # generate checksum of artifacts
 checksums -v -c $target_dir --force
 
-zip "$bin_name"_x64_$os_type.zip $target_dir/$bin_name $target_dir/sbom.spdx $target_dir/release.hash
+zip "$bin_name"_x64_$os_type.zip $target_dir/$bin_name $target_dir/sbom.json $target_dir/release.hash
 
 # re-checksum for zip file
 checksums -v -c $target_dir --force
