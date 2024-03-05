@@ -20,8 +20,4 @@ impl fmt::Display for GManError {
     }
 }
 
-impl Error for GManError {
-    fn description(&self) -> &str {
-        &self.details
-    }
-}
+impl Error for GManError {}
