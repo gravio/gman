@@ -21,3 +21,7 @@ impl fmt::Display for GManError {
 }
 
 impl Error for GManError {}
+
+unsafe impl Send for GManError {}
+
+unsafe impl Sync for GManError {}
