@@ -15,6 +15,10 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    #[clap(long)]
+    #[arg(global = true)]
+    pub log_level: Option<log::LevelFilter>,
 }
 
 #[derive(Debug, Subcommand)]

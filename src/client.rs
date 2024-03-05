@@ -26,8 +26,7 @@ pub struct Client {
 impl Client {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let client_config = ClientConfig::load_config::<OsStr>(None)?;
-        app::init_logging();
-        app::enable_logging(client_config.log_level);
+        app::init_logging(Some(client_config.log_level));
         let c = Client::new(client_config);
 
         /* clear the temp directories */
@@ -37,8 +36,7 @@ impl Client {
     }
 
     pub fn init(&self) {
-        app::init_logging();
-        app::enable_logging(self.config.log_level);
+        app::init_logging(Some(self.config.log_level));
         self.clear_temp();
     }
 

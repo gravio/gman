@@ -24,6 +24,10 @@ use crate::client::Client;
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli = Cli::parse();
 
+    if let Some(ll) = &cli.log_level {
+        app::init_logging(Some(*ll));
+    }
+
     let config = match ClientConfig::load_config(cli.config_path) {
         Ok(c) => c,
         Err(e) => {

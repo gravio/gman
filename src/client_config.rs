@@ -146,11 +146,6 @@ impl ClientConfig {
         for path_opt in try_first_pass {
             match path_opt {
                 Some(p) => {
-                    log::debug!(
-                        "Attempting to load configuration from {}",
-                        &p.to_string_lossy()
-                    );
-
                     /* if directory, append the constant name, otherwise use as-is */
                     let p = if p.is_dir() {
                         p.join(app::CLIENT_CONFIG_FILE_NAME)
@@ -158,8 +153,14 @@ impl ClientConfig {
                         p
                     };
 
+                    log::debug!(
+                        "Attempting to load configuration from {}",
+                        &p.to_string_lossy()
+                    );
+
                     match std::fs::read_to_string(&p) {
                         Ok(s) => {
+                            log::debug!("Found configuration");
                             let config: ClientConfig = json5::from_str(&s)?;
                             config.ensure_directories();
                             return Ok(config);
