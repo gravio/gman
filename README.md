@@ -1,7 +1,8 @@
 # Gravio Manager
 
-Client: Manages installations of Studio, Hubkit on a (local) machine Server:
-Hosts versioned Gravio binaries
+Client: Manages installations of binaries on a local machine
+
+Server: Hosts versioned binaries (_NYI_)
 
 ## Requirements (Usage)
 
@@ -18,16 +19,32 @@ Hosts versioned Gravio binaries
 Run the setup script, which installs necessary post-build tool for generating
 SBOMs and checksums
 
+`Windows`
+
 ```cmd
 setup.ps1
+```
+
+`Linux / Mac`
+
+```bash
+setup.sh
 ```
 
 # Building
 
 Run the build script, which also takes care of post-build steps
 
+`Windows`
+
 ```cmd
 build.ps1
+```
+
+`Linux / Mac`
+
+```bash
+build.sh
 ```
 
 # SBOM and Checksum
@@ -43,7 +60,7 @@ $ graviomanager -h
 
 Manages Asteria products on a machine
 
-Usage: graviomanager.exe [COMMAND]
+Usage: graviomanager.exe [OPTIONS] [CONFIG_PATH] [COMMAND]
 
 Commands:
   list       Lists installation candidates
@@ -54,9 +71,13 @@ Commands:
   config     Deals with the configuration
   help       Print this message or the help of the given subcommand(s)
 
+Arguments:
+  [CONFIG_PATH]  Determines where to load the configuration json from
+
 Options:
-  -h, --help     Print help
-  -V, --version  Print version
+      --log-level <LOG_LEVEL>
+  -h, --help                   Print help
+  -V, --version                Print version
 ```
 
 ## Show installed items
@@ -108,15 +129,6 @@ $ graviomanager list --show-installed
 ```
 
 <img src="docs/list.webp" height="350" width="600">
-## Uninstall a product
-
-```cmd
-$ graviomanager uninstall graviostudio
-
-Looking to uninstall an item: graviostudio
-Found uninstallation target. Attempting to uninstall GravioStudio                                                                                           
-Successfully uninstalled GravioStudio
-```
 
 ## Uninstall a product
 
@@ -150,17 +162,21 @@ Successfully Installed graviostudio
 Installation takes a few fields:
 
 ```cmd
+Installs the [candidate] with optional [version]
+
 Usage: graviomanager.exe install [OPTIONS] <NAME> [BUILD_OR_BRANCH]
 
 Arguments:
-  <NAME>
-  [BUILD_OR_BRANCH]
+  <NAME>             Product name, taken from the `products` section of the gman_client_config.json5
+  [BUILD_OR_BRANCH]  Build number, or git branch/tag
 
 Options:
   -f, --flavor <FLAVOR>
           Product flavor (e.g.,, Sideloading, Arm64 etc)
   -a, --automatic-upgrade <AUTOMATIC_UPGRADE>
-          Whether to find newer build versions, if `build` isnt specified. Leave empty to be prompted. [possible values: true, false]
+          Whether to find newer build versions, if a build number isnt specified. Leave empty to be prompted. [possible values: true, false]
+      --log-level <LOG_LEVEL>
+
   -h, --help
           Print help
   -V, --version
