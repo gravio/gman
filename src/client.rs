@@ -642,7 +642,7 @@ impl Client {
                                 || flavor.package_type == PackageType::MsiX
                             {
                                 if let Some(metadata) = &flavor.metadata {
-                                    if let Some(dname_regex) = metadata.get("NameRegex") {
+                                    if let Some(dname_regex) = &metadata.name_regex {
                                         match Regex::new(&dname_regex) {
                                             Ok(rgx) => {
                                                 if rgx.is_match(&v.name) {
@@ -727,8 +727,7 @@ impl Client {
                             for flavor in &product.flavors {
                                 if flavor.package_type == PackageType::Msi {
                                     if let Some(metadata) = &flavor.metadata {
-                                        if let Some(dname_regex) = metadata.get("DisplayNameRegex")
-                                        {
+                                        if let Some(dname_regex) = &metadata.display_name_regex {
                                             match Regex::new(&dname_regex) {
                                                 Ok(rgx) => {
                                                     if rgx.is_match(&found_package.name) {
@@ -877,7 +876,12 @@ mod tests {
     use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
     use crate::{
-        app, candidate::SearchCandidate, cli::Target, platform::Platform, product::{Flavor, PackageType, Product, TeamCityMetadata}, team_city, Client
+        app,
+        candidate::SearchCandidate,
+        cli::Target,
+        platform::Platform,
+        product::{Flavor, FlavorMetadata, PackageType, Product, TeamCityMetadata},
+        team_city, Client,
     };
     use lazy_static::lazy_static;
 
@@ -905,10 +909,14 @@ mod tests {
                     teamcity_id: "Gravio_GravioHubKit4".to_owned(),
                     teamcity_binary_path: PathBuf::from_str("GravioHubKit.dmg").expect("Expected infalable app hubkit path"),
                 },
-                metadata: Some(HashMap::from([
-                    ("CFBundleName".into(), "Gravio HubKit".into()),
-                    ("CFBundleIdentifier".into(), "com.asteria.mac.gravio4".into())
-                ])),
+                metadata: Some(FlavorMetadata {
+                    cf_bundle_id: Some(String::from("com.asteria.mac.gravio4")),
+                    cf_bundle_name: Some(String::from("Gravio HubKit")),
+                    display_name_regex: None,
+                    install_path: None,
+                    name_regex: None,
+                }),
+
                 autorun: false,
             },
             // TODO(nf): Linux binaries are named for their version number (i.e., hubkit_5.2.1-8219_all.deb), this makes it hard to automatically extract their binary
@@ -949,10 +957,13 @@ mod tests {
                         teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
                         teamcity_binary_path: PathBuf::from_str("developerid/GravioStudio.dmg").expect("Expected infalable binary studio mac developer path"),
                     },
-                    metadata: Some(HashMap::from([
-                        ("CFBundleName".into(), "Gravio Studio".into()),
-                        ("CFBundleIdentifier".into(), "com.asteria.mac.graviostudio4".into())
-                    ])),
+                    metadata: Some(FlavorMetadata {
+                        cf_bundle_id: Some(String::from("com.asteria.mac.graviostudio4")),
+                        cf_bundle_name: Some(String::from("Gravio Studio")),
+                        display_name_regex: None,
+                        install_path: None,
+                        name_regex: None,
+                    }),
                     autorun: false,
                 },
                 Flavor {
@@ -963,10 +974,13 @@ mod tests {
                         teamcity_id: "Gravio_GravioStudio4ForMac".to_owned(),
                         teamcity_binary_path: PathBuf::from_str("appstore/Gravio Studio.pkg").expect("Expected infalable binary studio mac appstore path"),
                     },
-                    metadata: Some(HashMap::from([
-                        ("CFBundleName".into(), "Gravio Studio".into()),
-                        ("CFBundleIdentifier".into(), "com.asteria.mac.graviostudio4".into())
-                    ])),
+                    metadata: Some(FlavorMetadata {
+                        cf_bundle_id: Some(String::from("com.asteria.mac.graviostudio4")),
+                        cf_bundle_name: Some(String::from("Gravio Studio")),
+                        display_name_regex: None,
+                        install_path: None,
+                        name_regex: None,
+                    }),
                     autorun: false,
                 }
             ],

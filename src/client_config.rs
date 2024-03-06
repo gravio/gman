@@ -13,7 +13,7 @@ use crate::{
     app,
     gman_error::GManError,
     platform::{self, Platform},
-    product::{self, Flavor, Product, TeamCityMetadata},
+    product::{self, Flavor, FlavorMetadata, Product, TeamCityMetadata},
 };
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -246,10 +246,13 @@ impl ClientConfig {
                             teamcity_binary_path: "path/to/WindowsUWP.zip".into(),
                             teamcity_id: "SomeUwpSample".into(),
                         },
-                        metadata: Some(HashMap::from([(
-                            "NameRegex".into(),
-                            "some.uwp.sampleproduct".into(),
-                        )])),
+                        metadata: Some(FlavorMetadata {
+                            cf_bundle_name: None,
+                            cf_bundle_id: None,
+                            display_name_regex: None,
+                            install_path: None,
+                            name_regex: Some(String::from("some.uwp.sampleproduct")),
+                        }),
                     },
                     Flavor {
                         autorun: false,
@@ -260,13 +263,13 @@ impl ClientConfig {
                             teamcity_binary_path: "path/to/MacApp.dmg".into(),
                             teamcity_id: "SomeMacSample".into(),
                         },
-                        metadata: Some(HashMap::from([
-                            (
-                                "CFBundleIdentifier".into(),
-                                "com.somecompany.sampleproduct".into(),
-                            ),
-                            ("CFBundleName".into(), "SampleProduct".into()),
-                        ])),
+                        metadata: Some(FlavorMetadata {
+                            cf_bundle_name: Some(String::from("SampleProduct")),
+                            cf_bundle_id: Some(String::from("com.somecompany.sampleproduct")),
+                            display_name_regex: Some("Gravio HubKit*".into()),
+                            install_path: None,
+                            name_regex: None,
+                        }),
                     },
                 ],
             }],

@@ -112,9 +112,30 @@ pub struct Flavor {
     #[serde(rename = "PackageType")]
     pub package_type: PackageType,
     #[serde(rename = "Metadata")]
-    pub metadata: Option<HashMap<String, String>>,
+    pub metadata: Option<FlavorMetadata>,
     #[serde(rename = "Autorun", default = "default_bool::<false>")]
     pub autorun: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FlavorMetadata {
+    /// for Windows AppX
+    #[serde(rename = "NameRegex", skip_serializing_if = "Option::is_none")]
+    pub name_regex: Option<String>,
+    /// For Windows MSI
+    #[serde(rename = "DisplayNameRegex", skip_serializing_if = "Option::is_none")]
+    pub display_name_regex: Option<String>,
+
+    /// For StandaloneEXE
+    #[serde(rename = "InstallPath", skip_serializing_if = "Option::is_none")]
+    pub install_path: Option<String>,
+
+    /// For Mac App
+    #[serde(rename = "CFBundleIdentifier", skip_serializing_if = "Option::is_none")]
+    pub cf_bundle_id: Option<String>,
+    /// For MacApp
+    #[serde(rename = "CFBundleName", skip_serializing_if = "Option::is_none")]
+    pub cf_bundle_name: Option<String>,
 }
 
 const fn default_bool<const V: bool>() -> bool {

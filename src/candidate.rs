@@ -935,7 +935,7 @@ mod tests {
     use crate::{
         candidate::Version,
         platform::Platform,
-        product::{self, Flavor, TeamCityMetadata},
+        product::{self, Flavor, FlavorMetadata, TeamCityMetadata},
     };
 
     use super::InstallationCandidate;
@@ -946,10 +946,13 @@ mod tests {
             flavor: Flavor {
                 autorun: false,
                 id: "WindowsHubKit".into(),
-                metadata: Some(HashMap::from([(
-                    "DisplayNameRegex".into(),
-                    "Gravio HubKit*".into(),
-                )])),
+                metadata: Some(FlavorMetadata {
+                    cf_bundle_name: None,
+                    cf_bundle_id: None,
+                    display_name_regex: Some("Gravio HubKit*".into()),
+                    install_path: None,
+                    name_regex: None,
+                }),
                 package_type: product::PackageType::Msi,
                 teamcity_metadata: TeamCityMetadata {
                     teamcity_binary_path: "GravioHubKit.msi".into(),
