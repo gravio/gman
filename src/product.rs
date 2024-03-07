@@ -136,6 +136,10 @@ pub struct FlavorMetadata {
     /// For MacApp
     #[serde(rename = "CFBundleName", skip_serializing_if = "Option::is_none")]
     pub cf_bundle_name: Option<String>,
+
+    /// For StandaloneExe
+    #[serde(rename = "LaunchArgs", skip_serializing_if = "Option::is_none")]
+    pub launch_args: Option<Vec<String>>,
 }
 
 const fn default_bool<const V: bool>() -> bool {

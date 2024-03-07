@@ -536,7 +536,7 @@ impl Client {
                                         || version_major_minor.is_none()
                                         || version_build.is_none()
                                     {
-                                        log::error!("CFBundleIdentifier or CDBundleExecutable were not strings");
+                                        log::error!("CFBundleIdentifier or CFBundleExecutable were not strings");
                                         continue;
                                     }
                                     let found_id = id.unwrap();
