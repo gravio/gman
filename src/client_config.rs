@@ -252,6 +252,7 @@ impl ClientConfig {
                             display_name_regex: None,
                             install_path: None,
                             name_regex: Some(String::from("some.uwp.sampleproduct")),
+                            launch_args: None,
                         }),
                     },
                     Flavor {
@@ -269,6 +270,7 @@ impl ClientConfig {
                             display_name_regex: Some("Gravio HubKit*".into()),
                             install_path: None,
                             name_regex: None,
+                            launch_args: None,
                         }),
                     },
                 ],

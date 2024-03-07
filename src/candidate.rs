@@ -714,6 +714,7 @@ impl From<InstalledAppXProduct> for InstalledProduct {
             version: value.version,
             package_name: value.package_full_name,
             package_type: PackageType::AppX,
+            path: PathBuf::new(),
         }
     }
 }
@@ -958,6 +959,7 @@ mod tests {
                     display_name_regex: Some("Gravio HubKit*".into()),
                     install_path: None,
                     name_regex: None,
+                    launch_args: None,
                 }),
                 package_type: product::PackageType::Msi,
                 teamcity_metadata: TeamCityMetadata {

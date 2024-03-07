@@ -127,36 +127,45 @@ impl Client {
         version: Option<Version>,
         path: Option<P>,
         prompt: Option<bool>,
-    ) -> Result<(), Box<dyn std::error::Error>>  where P: AsRef<Path>{
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        P: AsRef<Path>,
+    {
         log::debug!("Attempting to find uninstallation target for {}", &name);
 
         println!("Looking to uninstall an item: {}", name);
         let name_lower = name.to_lowercase();
         let installed = self.get_installed();
-        let uninstall_candidates = installed.iter().filter(|candidate| {
-            if candidate.product_name.to_lowercase() == name_lower {
-                if let Some(v) = &version {
-                    &candidate.version == v
+        let uninstall_candidates = installed
+            .iter()
+            .filter(|candidate| {
+                if candidate.product_name.to_lowercase() == name_lower {
+                    if let Some(v) = &version {
+                        &candidate.version == v
+                    } else {
+                        true
+                    }
                 } else {
-                    true
+                    false
                 }
-            } else {
-                false
-            }
-        }).collect::<Vec<&InstalledProduct>>();
+            })
+            .collect::<Vec<&InstalledProduct>>();
 
         if uninstall_candidates.is_empty() {
             eprintln!("No item named {} found on system, cannot uninstall", &name);
             Err(Box::new(GManError::new("No item found")))
-        } else
-         {   
+        } else {
             let prompt = prompt.unwrap_or(true) && uninstall_candidates.len() > 1;
             for candidate in uninstall_candidates {
                 log::debug!("Found uninstallation target, will attempt an uninstall");
                 println!(
                     "Found uninstallation target. Attempting to uninstall {}{}",
-                    if prompt { candidate.path.to_str().unwrap() } else { &candidate.product_name },
-                    if prompt {".\nuninstall? [y/N]"} else {""}
+                    if prompt {
+                        candidate.path.to_str().unwrap()
+                    } else {
+                        &candidate.product_name
+                    },
+                    if prompt { ".\nuninstall? [y/N]" } else { "" }
                 );
 
                 if prompt {
@@ -348,17 +357,25 @@ impl Client {
         let all_installed = &self.get_installed();
         let already_installed = all_installed
             .iter()
-            .find(|x| x.product_name.to_lowercase() == search.product_name.to_lowercase());
-        if let Some(already) = already_installed {
-            if already.version == actual_candidate.version {
-                eprintln!(
-                    "This version ({}) of the product is already installed on machine. Skipping.",
-                    already.version
-                );
-                return Ok(());
-            }
+            .filter(|x| x.product_name.to_lowercase() == search.product_name.to_lowercase())
+            .collect::<Vec<&InstalledProduct>>();
+
+        if already_installed
+            .iter()
+            .any(|x| x.version == actual_candidate.version)
+        {
+            eprintln!(
+                "This version ({}) of the product is already installed on machine. Skipping.",
+                actual_candidate.version
+            );
+            return Ok(());
+        }
+
+        if !already_installed.is_empty() {
             eprintln!("Product already installed on machine. Uninstalling before continuing...");
-            already.uninstall()?;
+            for already in already_installed {
+                already.uninstall()?;
+            }
             eprintln!("Successfully Uninstalled product, continuing with new installation");
         }
 
@@ -550,9 +567,7 @@ impl Client {
                                         for flavor in &product.flavors {
                                             if flavor.platform == Platform::Mac {
                                                 if let Some(metadata) = &flavor.metadata {
-                                                    if let Some(known_id) =
-                                                        &metadata.cf_bundle_id
-                                                    {
+                                                    if let Some(known_id) = &metadata.cf_bundle_id {
                                                         if known_id == found_id {
                                                             product_identifier = known_id.into();
                                                             product_name = product.name.to_owned();
@@ -572,7 +587,7 @@ impl Client {
                                             )),
                                             package_name: product_identifier,
                                             package_type: PackageType::App,
-                                            path: app_path
+                                            path: app_path,
                                         };
 
                                         installed.push(instaled_product);
@@ -601,6 +616,8 @@ impl Client {
     fn get_installed_windows<'a>(
         &'a self,
     ) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
+        use std::path::PathBuf;
+
         use regex::Regex;
 
         let mut installed: Vec<InstalledProduct> = Vec::new();
@@ -773,6 +790,7 @@ impl Client {
                             version: Version::new(&found_package.version),
                             package_name: found_package.package_full_name.to_owned(),
                             package_type: product::PackageType::Msi,
+                            path: PathBuf::new(),
                         };
 
                         installed.push(installed_product);
@@ -936,6 +954,7 @@ mod tests {
                     display_name_regex: None,
                     install_path: None,
                     name_regex: None,
+                    launch_args: None,
                 }),
 
                 autorun: false,
@@ -984,6 +1003,7 @@ mod tests {
                         display_name_regex: None,
                         install_path: None,
                         name_regex: None,
+                        launch_args: None
                     }),
                     autorun: false,
                 },
@@ -1001,6 +1021,7 @@ mod tests {
                         display_name_regex: None,
                         install_path: None,
                         name_regex: None,
+                        launch_args: None
                     }),
                     autorun: false,
                 }
