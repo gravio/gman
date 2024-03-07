@@ -30,11 +30,14 @@ pub struct TablePrinter {
     pub flavor: String,
     #[tabled(order = 4)]
     pub installed: bool,
+    #[tabled(order = 5)]
+    pub path: String,
 }
 
 impl Into<TablePrinter> for InstallationCandidate {
     fn into(self) -> TablePrinter {
         TablePrinter {
+            path: self.make_cached_file_name(),
             identifier: self.identifier,
             name: self.product_name,
             version: self.version.into(),
@@ -47,6 +50,7 @@ impl Into<TablePrinter> for InstallationCandidate {
 impl From<InstalledProduct> for TablePrinter {
     fn from(value: InstalledProduct) -> Self {
         TablePrinter {
+            path: value.path.to_string_lossy().to_string(),
             identifier: value.package_name,
             name: value.product_name,
             version: value.version.0,
@@ -309,7 +313,7 @@ impl InstallationCandidate {
     fn autorun_mac(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Attempting to automatically launch application");
         if let Some(metadata) = &self.flavor.metadata {
-            if let Some(bundle_name) = metadata.get("CFBundleName") {
+            if let Some(bundle_name) = &metadata.cf_bundle_name {
                 let output = Command::new("open").arg("-a").arg(bundle_name).output()?;
 
                 if output.status.success() {
@@ -698,6 +702,8 @@ pub struct InstalledProduct {
 
     pub package_name: String,
     pub package_type: PackageType,
+
+    pub path: PathBuf,
 }
 
 #[cfg(target_os = "windows")]

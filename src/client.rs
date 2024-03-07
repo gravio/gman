@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::str::FromStr as _;
 
 use std::process::Command;
@@ -120,17 +121,19 @@ impl Client {
         Ok(candidates)
     }
 
-    pub fn uninstall(
+    pub fn uninstall<P>(
         &self,
         name: &str,
         version: Option<Version>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        path: Option<P>,
+        prompt: Option<bool>,
+    ) -> Result<(), Box<dyn std::error::Error>>  where P: AsRef<Path>{
         log::debug!("Attempting to find uninstallation target for {}", &name);
 
         println!("Looking to uninstall an item: {}", name);
         let name_lower = name.to_lowercase();
         let installed = self.get_installed();
-        let uninstall = installed.iter().find(|candidate| {
+        let uninstall_candidates = installed.iter().filter(|candidate| {
             if candidate.product_name.to_lowercase() == name_lower {
                 if let Some(v) = &version {
                     &candidate.version == v
@@ -140,24 +143,35 @@ impl Client {
             } else {
                 false
             }
-        });
+        }).collect::<Vec<&InstalledProduct>>();
 
-        match uninstall {
-            Some(candidate) => {
+        if uninstall_candidates.is_empty() {
+            eprintln!("No item named {} found on system, cannot uninstall", &name);
+            Err(Box::new(GManError::new("No item found")))
+        } else
+         {   
+            let prompt = prompt.unwrap_or(true) && uninstall_candidates.len() > 1;
+            for candidate in uninstall_candidates {
                 log::debug!("Found uninstallation target, will attempt an uninstall");
                 println!(
-                    "Found uninstallation target. Attempting to uninstall {}",
-                    candidate.product_name
+                    "Found uninstallation target. Attempting to uninstall {}{}",
+                    if prompt { candidate.path.to_str().unwrap() } else { &candidate.product_name },
+                    if prompt {".\nuninstall? [y/N]"} else {""}
                 );
+
+                if prompt {
+                    let mut buffer = String::new();
+                    std::io::stdin().read_line(&mut buffer)?;
+                    if !Self::is_console_confirm(&buffer) {
+                        println!("Will not uninstall this item");
+                        continue;
+                    };
+                }
                 candidate.shutdown()?;
                 candidate.uninstall()?;
                 println!("Successfully uninstalled {}", &candidate.product_name);
-                Ok(())
             }
-            None => {
-                eprintln!("No item named {} found on system, cannot uninstall", &name);
-                Err(Box::new(GManError::new("No item found")))
-            }
+            Ok(())
         }
     }
 
@@ -491,13 +505,13 @@ impl Client {
             Ok(list_dir) => {
                 for entry_result in list_dir {
                     if let Ok(entry) = entry_result {
-                        let path = entry.path();
+                        let app_path = entry.path();
                         if entry.file_type()?.is_dir() {
-                            let app_path = path.join("Contents").join("Info.plist");
+                            let plist_path = app_path.join("Contents").join("Info.plist");
                             match plist::from_file::<
                                 std::path::PathBuf,
                                 HashMap<String, plist::Value>,
-                            >(app_path.clone())
+                            >(plist_path.clone())
                             {
                                 Ok(pl) => {
                                     let id = pl.get("CFBundleIdentifier");
@@ -537,7 +551,7 @@ impl Client {
                                             if flavor.platform == Platform::Mac {
                                                 if let Some(metadata) = &flavor.metadata {
                                                     if let Some(known_id) =
-                                                        metadata.get("CFBundleIdentifier")
+                                                        &metadata.cf_bundle_id
                                                     {
                                                         if known_id == found_id {
                                                             product_identifier = known_id.into();
@@ -558,6 +572,7 @@ impl Client {
                                             )),
                                             package_name: product_identifier,
                                             package_type: PackageType::App,
+                                            path: app_path
                                         };
 
                                         installed.push(instaled_product);
@@ -566,7 +581,7 @@ impl Client {
                                 Err(e) => {
                                     log::error!(
                                         "Failed to read contents of {}: {e}",
-                                        &app_path.to_str().unwrap()
+                                        &plist_path.to_str().unwrap()
                                     )
                                 }
                             }
@@ -797,14 +812,13 @@ impl Client {
         candidates: Vec<impl Into<TablePrinter>>,
         show_installed: bool,
         show_flavor: bool,
+        show_path: bool,
     ) {
         log::debug!(
             "Formatting candidate list with {} candidates",
             candidates.len()
         );
 
-        // let lll = candidates[0];
-        // let abc: TablePrinter = lll.into();
         let mut data = candidates
             .into_iter()
             .map(|x| x.into())
@@ -829,6 +843,9 @@ impl Client {
             if show_installed {
                 header.push("Installed");
             }
+            if show_path {
+                header.push("Path");
+            }
             header
         };
         let header_record_count = header_record.len();
@@ -845,6 +862,9 @@ impl Client {
                 }
                 if show_installed && item.installed {
                     r.push(item.installed.to_string());
+                }
+                if show_path && item.installed {
+                    r.push(item.path.to_owned())
                 }
                 r
             };
@@ -883,6 +903,7 @@ mod tests {
         product::{Flavor, FlavorMetadata, PackageType, Product, TeamCityMetadata},
         team_city, Client,
     };
+    use clap::builder::OsStr;
     use lazy_static::lazy_static;
 
     lazy_static! {
@@ -1344,7 +1365,7 @@ mod tests {
     fn uninstall_hubkit() {
         let c = Client::load().expect("Failed to load client");
 
-        let _ = c.uninstall("hubkit", None);
+        let _ = c.uninstall::<OsStr>("hubkit", None, None, None);
     }
 
     #[test]

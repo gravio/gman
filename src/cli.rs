@@ -33,7 +33,27 @@ pub enum Commands {
         show_installed: bool,
     },
     /// Uninstalls the candidate
-    Uninstall { name: String, ver: Option<String> },
+    Uninstall { 
+        #[clap(
+            help = "Product name, taken from the `products` section of the gman_client_config.json5"
+        )]
+        name: String,
+
+        #[clap(help = "Version to uninstall, if specified")]
+        ver: Option<String>,
+
+        #[clap(
+            long,
+            help = "Path to uninstall, if valid for the product. Only referenced if multiple identical products are installed at different paths"
+        )]
+        path: Option<PathBuf>,
+
+        #[clap(
+            long,
+            help = "whether to prompt to uninstall. Only used when multiple identical products are installed. Set to false to uninstall all products automatically"
+        )]
+        prompt: Option<bool>
+    },
     /// Installs the [candidate] with optional [version]
     Install {
         #[clap(

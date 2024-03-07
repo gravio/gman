@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 match client.list_cache() {
                     Some(items) => {
                         println!("Content Count: {}", items.len());
-                        client.format_candidate_table(items, false, false);
+                        client.format_candidate_table(items, false, false, false);
                     }
                     None => {
                         println!("Nothing in cache");
@@ -112,15 +112,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     }
                 }
             }
-            client.format_candidate_table(candidates, *show_installed, true);
+            client.format_candidate_table(candidates, *show_installed, true, false);
             exit(0)
         }
         /* Uninstall */
-        Some(Commands::Uninstall { name, ver }) => {
+        Some(Commands::Uninstall { name, ver, path, prompt }) => {
             let client = Client::new(config);
             client.init();
 
-            let _ = client.uninstall(&name, ver.to_owned().map(|x| Version::new(&x)));
+            let _ = client.uninstall(&name, 
+            ver.to_owned().map(|x| Version::new(&x)),
+            path.to_owned(),
+            prompt.to_owned(),
+        );
             exit(0)
         }
         /* Install */
@@ -178,7 +182,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let client = Client::new(config);
             client.init();
             let candidates = client.get_installed();
-            client.format_candidate_table(candidates, false, false);
+            let show_path: bool = {
+                if cfg!(target_os="macos") || cfg!(target_os="linux") {
+                    true
+                } else {
+                    false
+                }
+            };
+            client.format_candidate_table(candidates, false, false, show_path);
             exit(0)
         }
         Some(Commands::Config { sample }) => {
