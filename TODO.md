@@ -8,3 +8,7 @@
 
 - `--skip-cache`
   - ignores cached items, downloads from server always
+
+- `StandaloneExe`
+  - launchArgs etc valid for the metadata but this option goes nowhere. Also
+    want to implement `stop_args`, `start_args`, and `run_as_service`
