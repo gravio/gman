@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+#[allow(unused_imports)]
 use log::Log;
 
 pub const APP_FOLDER_NAME: &'static str = "gman_5a8f853f-d7e7-4a83-aa21-6ed0585b0c40";

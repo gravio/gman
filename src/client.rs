@@ -428,16 +428,6 @@ impl Client {
         actual_candidate.install(&binary_path, install_options)
     }
 
-    fn get_unusued_installation_path(
-        &self,
-        actual_candidate: &InstallationCandidate,
-        all_installed: &Vec<InstalledProduct>,
-    ) -> PathBuf {
-        let binary_path: std::path::PathBuf =
-            actual_candidate.make_output_for_candidate(&self.config.cache_directory);
-        binary_path
-    }
-
     pub fn list_cache(&self) -> Option<Vec<InstallationCandidate>> {
         log::debug!(
             "Listing contents of cache directory {}",
@@ -670,8 +660,6 @@ impl Client {
     fn get_installed_windows<'a>(
         &'a self,
     ) -> Result<Vec<InstalledProduct>, Box<dyn std::error::Error>> {
-        use std::path::PathBuf;
-
         use regex::Regex;
 
         let mut installed: Vec<InstalledProduct> = Vec::new();
@@ -965,7 +953,7 @@ impl Client {
 #[cfg(test)]
 mod tests {
 
-    use std::{collections::HashMap, path::PathBuf, str::FromStr};
+    use std::{path::PathBuf, str::FromStr};
 
     use crate::{
         app,

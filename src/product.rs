@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -34,22 +34,6 @@ pub enum PackageType {
     Ipa,
 }
 
-impl PackageType {
-    pub fn supported_for_platform(&self, platform: &Platform) -> bool {
-        match platform {
-            Platform::Android => self == &PackageType::Apk,
-            Platform::IOS => self == &PackageType::Ipa,
-            Platform::Windows => {
-                self == &PackageType::Msi
-                    || self == &PackageType::MsiX
-                    || self == &PackageType::AppX
-            }
-            Platform::Mac => self == &PackageType::Apk,
-            Platform::RaspberryPi => self == &PackageType::Deb,
-            Platform::Linux => self == &PackageType::Deb,
-        }
-    }
-}
 impl<'de> Deserialize<'de> for PackageType {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

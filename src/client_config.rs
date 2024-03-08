@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
     str::FromStr,

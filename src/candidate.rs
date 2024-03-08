@@ -381,7 +381,7 @@ impl InstallationCandidate {
     fn install_windows<P>(
         &self,
         binary_path: P,
-        options: InstallOverwriteOptions,
+        _options: InstallOverwriteOptions,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
         P: AsRef<Path>,
@@ -1015,8 +1015,6 @@ pub struct InstalledAppXProduct {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use crate::{
         candidate::Version,
         platform::Platform,
