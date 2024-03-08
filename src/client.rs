@@ -7,7 +7,8 @@ use std::process::Command;
 #[cfg(target_os = "windows")]
 use crate::candidate::InstalledAppXProduct;
 use crate::candidate::{
-    InstallOverwriteOptions, InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter, Version
+    InstallOverwriteOptions, InstallationCandidate, InstallationResult, InstalledProduct,
+    SearchCandidate, TablePrinter, Version,
 };
 
 use crate::gman_error::GManError;
@@ -188,12 +189,21 @@ impl Client {
         Ok(Self::is_console_confirm(&buffer))
     }
 
-    #[cfg(target_os="macos")]
     fn prompt_installation_choice() -> Result<InstallOverwriteOptions, Box<dyn std::error::Error>> {
-        eprintln!("What would you like to do with this item? Uninstall [o]verwrite, or [a]dd an extra installation?");
+        if cfg!(windows) {
+            eprintln!("What would you like to do with this item? [o]verwrite, or [c]ancel?");
+        } else {
+            eprintln!("What would you like to do with this item? [o]verwrite, [a]dd an extra installation, or [c]ancel?");
+        }
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer)?;
         let s = InstallOverwriteOptions::from_str(&buffer.to_lowercase().trim())?;
+        if cfg!(windows) {
+            if let InstallOverwriteOptions::Add = s {
+                log::debug!("Setting installation option to overwrite, because /add/ isnt supported for Windows installations");
+                return Ok(InstallOverwriteOptions::Overwrite);
+            }
+        }
         Ok(s)
     }
 
@@ -290,7 +300,7 @@ impl Client {
         search: &SearchCandidate,
         automatic_upgrade: Option<bool>,
         prompt: Option<bool>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<InstallationResult, Box<dyn std::error::Error>> {
         log::debug!(
             "Setting up installation prep for {} @ {}",
             &search.product_name,
@@ -360,7 +370,7 @@ impl Client {
 
                 match self.download(search).await? {
                     Some(found) => found,
-                    None => return Ok(()),
+                    None => return Ok(InstallationResult::Skipped),
                 }
             }
         };
@@ -380,13 +390,15 @@ impl Client {
                 "This version ({}) of the product is already installed on machine. Skipping.",
                 actual_candidate.version
             );
-            return Ok(());
+            return Ok(InstallationResult::Skipped);
         }
 
         let install_options = match already_installed.is_empty() {
-            true =>  InstallOverwriteOptions::Overwrite,
+            true => InstallOverwriteOptions::Overwrite,
             false => {
-                eprintln!("Product already installed on machine. Uninstalling before continuing...");
+                eprintln!(
+                    "Product already installed on machine. Uninstalling before continuing..."
+                );
                 if prompt.unwrap_or(true) {
                     Self::prompt_installation_choice()?
                 } else {
@@ -394,7 +406,6 @@ impl Client {
                 }
             }
         };
-       
 
         match install_options {
             InstallOverwriteOptions::Overwrite => {
@@ -403,13 +414,13 @@ impl Client {
                     already.uninstall()?;
                 }
                 eprintln!("Successfully Uninstalled product, continuing with new installation");
-            },
+            }
             InstallOverwriteOptions::Add => {
                 eprintln!("Will create an additional installation for this item")
-            },
+            }
             InstallOverwriteOptions::Cancel => {
                 eprintln!("Wont continue with installation");
-                return Ok(());
+                return Ok(InstallationResult::Canceled);
             }
         }
         /* Launch installer */
@@ -417,8 +428,13 @@ impl Client {
         actual_candidate.install(&binary_path, install_options)
     }
 
-    fn get_unusued_installation_path(&self, actual_candidate: &InstallationCandidate, all_installed: &Vec<InstalledProduct>) -> PathBuf {
-        let binary_path: std::path::PathBuf = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
+    fn get_unusued_installation_path(
+        &self,
+        actual_candidate: &InstallationCandidate,
+        all_installed: &Vec<InstalledProduct>,
+    ) -> PathBuf {
+        let binary_path: std::path::PathBuf =
+            actual_candidate.make_output_for_candidate(&self.config.cache_directory);
         binary_path
     }
 

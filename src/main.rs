@@ -116,15 +116,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             exit(0)
         }
         /* Uninstall */
-        Some(Commands::Uninstall { name, ver, path, prompt }) => {
+        Some(Commands::Uninstall {
+            name,
+            ver,
+            path,
+            prompt,
+        }) => {
             let client = Client::new(config);
             client.init();
 
-            let _ = client.uninstall(&name, 
-            ver.to_owned().map(|x| Version::new(&x)),
-            path.to_owned(),
-            prompt.to_owned(),
-        );
+            let _ = client.uninstall(
+                &name,
+                ver.to_owned().map(|x| Version::new(&x)),
+                path.to_owned(),
+                prompt.to_owned(),
+            );
             exit(0)
         }
         /* Install */
@@ -166,11 +172,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         target.to_string(),
                         candidate.flavor.id,
                     );
-                    client
+                    match client
                         .install(&candidate, *automatic_upgrade, *prompt)
                         .await
-                        .expect("Failed to install item");
-                    println!("Successfully Installed {}", candidate.product_name);
+                        .expect("Failed to install item")
+                    {
+                        candidate::InstallationResult::Canceled => {
+                            println!("Canceled installation");
+                        }
+                        candidate::InstallationResult::Succeeded => {
+                            println!("Successfully Installed {}", candidate.product_name);
+                        }
+                        candidate::InstallationResult::Skipped => {
+                            println!("Skipped installation");
+                        }
+                    }
+
                     exit(0);
                 }
                 None => {
@@ -184,7 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             client.init();
             let candidates = client.get_installed();
             let show_path: bool = {
-                if cfg!(target_os="macos") || cfg!(target_os="linux") {
+                if cfg!(target_os = "macos") || cfg!(target_os = "linux") {
                     true
                 } else {
                     false
