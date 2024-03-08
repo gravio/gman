@@ -70,6 +70,11 @@ pub enum Commands {
             help = "Whether to find newer build versions, if a build number isnt specified. Leave empty to be prompted."
         )]
         automatic_upgrade: Option<bool>,
+        #[clap(
+            long,
+            help = "whether to prompt to uninstall/replace. Only used when multiple identical products are installed. Set to false to uninstall all products automatically"
+        )]
+        prompt: Option<bool>
     },
     /// Clears the cache of all matching criteria, or all of it, if nothing specified
     Cache {

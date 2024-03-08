@@ -10,6 +10,9 @@ Server: Hosts versioned binaries (_NYI_)
 
 - Powershell 5+
 
+### Mac
+- rsync
+
 ## Requirements (Building)
 
 - Rust 1.76+

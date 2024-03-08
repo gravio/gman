@@ -223,6 +223,27 @@ impl Into<String> for Version {
 }
 
 #[derive(Debug)]
+pub enum InstallOverwriteOptions {
+    Overwrite,
+    Add,
+    Cancel,
+}
+
+impl FromStr for InstallOverwriteOptions {
+    type Err = GManError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "o"
+            | "overwrite" => Ok(InstallOverwriteOptions::Overwrite),
+            "a" 
+            | "add" => Ok(InstallOverwriteOptions::Add),
+            _ => Ok(InstallOverwriteOptions::Cancel)
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct InstallationCandidate {
     pub remote_id: String,
 
@@ -284,13 +305,13 @@ impl InstallationCandidate {
         dir.as_ref().join(fname)
     }
 
-    pub fn install<P>(&self, binary_path: P) -> Result<(), Box<dyn std::error::Error>>
+    pub fn install<P>(&self, binary_path: P, options: InstallOverwriteOptions) -> Result<(), Box<dyn std::error::Error>>
     where
         P: AsRef<Path>,
     {
         #[cfg(target_os = "windows")]
         {
-            self.install_windows(binary_path)?;
+            self.install_windows(binary_path, options)?;
             if self.flavor.autorun {
                 self.autorun_windows()?;
             }
@@ -298,7 +319,7 @@ impl InstallationCandidate {
 
         #[cfg(target_os = "macos")]
         {
-            install_mac(binary_path)?;
+            install_mac(binary_path, options)?;
             if self.flavor.autorun {
                 self.autorun_mac()?;
             }
@@ -348,7 +369,7 @@ impl InstallationCandidate {
     }
 
     #[cfg(target_os = "windows")]
-    fn install_windows<P>(&self, binary_path: P) -> Result<(), Box<dyn std::error::Error>>
+    fn install_windows<P>(&self, binary_path: P, options: InstallOverwriteOptions) -> Result<(), Box<dyn std::error::Error>>
     where
         P: AsRef<Path>,
     {
@@ -471,12 +492,13 @@ impl InstallationCandidate {
 }
 
 #[cfg(target_os = "macos")]
-fn install_mac<P>(binary_path: P) -> Result<(), Box<dyn std::error::Error>>
+fn install_mac<P>(binary_path: P, options: InstallOverwriteOptions) -> Result<(), Box<dyn std::error::Error>>
 where
     P: AsRef<Path>,
 {
     use indicatif::ProgressBar;
-    use std::time::Duration;
+    use shellexpand::full;
+    use std::{ops::Add, time::Duration};
 
     /* mount the dmg file */
     let mount = {
@@ -566,27 +588,63 @@ where
 
             if let Some(package) = package_type {
                 if package.is_app {
+
+                    let package_file_name = package.path.file_name().unwrap().to_str().unwrap().to_string();
+                    let folder_name = match options {
+                        InstallOverwriteOptions::Overwrite => package_file_name.to_owned(),
+                        InstallOverwriteOptions::Add => {
+                            let dst = {
+                                let mut dst_1 = {
+                                    let mut pb = Path::new(&MAC_APPLICATIONS_DIR).to_path_buf();
+                                    pb.push(&package_file_name);
+                                    pb
+                                };
+            
+                                let mut i = 1;
+                                let parent = dst_1.parent().unwrap().to_owned();
+                                while dst_1.exists() {
+                                    dst_1 = parent.join(format!("{}_{}", &package_file_name, i));
+                                    i += 1;
+                                    if i >= 200 {
+                                        log::error!("Tried 200 times to a valid free path, terminating.");
+                                        return Err(Box::new(GManError::new("Tried 200 trimes to find a valid free path during installation")));
+                                    }
+                                }
+                                dst_1
+                            };
+
+                            dst.file_name().unwrap().to_str().unwrap().to_owned()
+                        },
+                        InstallOverwriteOptions::Cancel => return Ok(()),
+                    };
+
+
+                
+                    let src = &package.path;
+                    let dst = PathBuf::from(&MAC_APPLICATIONS_DIR).join(folder_name);
+        
+
                     log::debug!(
-                        "Inner contents are .app, will copy directly  from {} to {}",
-                        &package.path.to_string_lossy(),
-                        &MAC_APPLICATIONS_DIR,
+                        "Inner contents are .app, will copy directly from {} to {}",
+                        &src.to_string_lossy(),
+                        &dst.to_string_lossy()
                     );
 
-                    // let last_level = app::disable_logging();
                     let progress_bar = ProgressBar::new_spinner()
-                        .with_message("Copying contents to /Applications");
+                        .with_message(format!("Copying contents to {}", dst.to_string_lossy()));
+
                     progress_bar.enable_steady_tick(Duration::from_millis(10));
                     let output = Command::new("cp")
-                        .arg("-Rf")
-                        .arg(&package.path)
-                        .arg(MAC_APPLICATIONS_DIR)
+                        .arg("-R")
+                        .arg("-a")
+                        .arg("-f")
+                        .arg(src)
+                        .arg(&dst)
                         .output()?;
                     progress_bar.finish_with_message("Copied items to folder");
                     if output.status.success() {
-                        log::debug!("Copied installer to {}", MAC_APPLICATIONS_DIR);
-                    }
-
-                    log::info!("Copied Application from mount to {}", &MAC_APPLICATIONS_DIR,);
+                        log::debug!("Copied app to {}", dst.to_string_lossy());
+                    } 
                 } else if package.is_pkg {
                     log::debug!("Inner contensts are .pkg, will run dpkg installer");
                     let output = Command::new("installer")

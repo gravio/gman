@@ -133,6 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             build_or_branch,
             flavor,
             automatic_upgrade,
+            prompt,
         }) => {
             let client = Client::new(config);
             client.init();
@@ -166,7 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         candidate.flavor.id,
                     );
                     client
-                        .install(&candidate, automatic_upgrade.to_owned())
+                        .install(&candidate, *automatic_upgrade, *prompt)
                         .await
                         .expect("Failed to install item");
                     println!("Successfully Installed {}", candidate.product_name);

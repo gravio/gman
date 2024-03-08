@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
 
 use std::process::Command;
@@ -7,7 +7,7 @@ use std::process::Command;
 #[cfg(target_os = "windows")]
 use crate::candidate::InstalledAppXProduct;
 use crate::candidate::{
-    InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter, Version,
+    InstallOverwriteOptions, InstallationCandidate, InstalledProduct, SearchCandidate, TablePrinter, Version
 };
 
 use crate::gman_error::GManError;
@@ -169,12 +169,10 @@ impl Client {
                 );
 
                 if prompt {
-                    let mut buffer = String::new();
-                    std::io::stdin().read_line(&mut buffer)?;
-                    if !Self::is_console_confirm(&buffer) {
+                    if Self::prompt_confirm()? {
                         println!("Will not uninstall this item");
                         continue;
-                    };
+                    }
                 }
                 candidate.shutdown()?;
                 candidate.uninstall()?;
@@ -182,6 +180,21 @@ impl Client {
             }
             Ok(())
         }
+    }
+
+    fn prompt_confirm() -> Result<bool, Box<dyn std::error::Error>> {
+        let mut buffer = String::new();
+        std::io::stdin().read_line(&mut buffer)?;
+        Ok(Self::is_console_confirm(&buffer))
+    }
+
+    #[cfg(target_os="macos")]
+    fn prompt_installation_choice() -> Result<InstallOverwriteOptions, Box<dyn std::error::Error>> {
+        eprintln!("What would you like to do with this item? Uninstall [o]verwrite, or [a]dd an extra installation?");
+        let mut buffer = String::new();
+        std::io::stdin().read_line(&mut buffer)?;
+        let s = InstallOverwriteOptions::from_str(&buffer.to_lowercase().trim())?;
+        Ok(s)
     }
 
     async fn download(
@@ -276,6 +289,7 @@ impl Client {
         &self,
         search: &SearchCandidate,
         automatic_upgrade: Option<bool>,
+        prompt: Option<bool>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!(
             "Setting up installation prep for {} @ {}",
@@ -318,9 +332,7 @@ impl Client {
                             /* version unspecified, prompt user to optionally fetch latest from build server */
                             println!("A candidate for installation has been found in the local cache, but since the version was unspecified it may be oudated. Would you like to check the remote repositories for updated versions? [y/N]");
                             println!("{}, {}", &cached.product_name, &cached.version);
-                            let mut buffer = String::new();
-                            std::io::stdin().read_line(&mut buffer)?;
-                            if Self::is_console_confirm(&buffer) {
+                            if Self::prompt_confirm()? {
                                 println!("Will search for more recent versions, and will use this cached item as fallback");
                                 self.get_build_server_version_if_higher_or_also_from_cache(
                                     cached,
@@ -371,17 +383,43 @@ impl Client {
             return Ok(());
         }
 
-        if !already_installed.is_empty() {
-            eprintln!("Product already installed on machine. Uninstalling before continuing...");
-            for already in already_installed {
-                already.uninstall()?;
+        let install_options = match already_installed.is_empty() {
+            true =>  InstallOverwriteOptions::Overwrite,
+            false => {
+                eprintln!("Product already installed on machine. Uninstalling before continuing...");
+                if prompt.unwrap_or(true) {
+                    Self::prompt_installation_choice()?
+                } else {
+                    InstallOverwriteOptions::Overwrite
+                }
             }
-            eprintln!("Successfully Uninstalled product, continuing with new installation");
-        }
+        };
+       
 
+        match install_options {
+            InstallOverwriteOptions::Overwrite => {
+                eprintln!("Will overwrite any existing installations with this one");
+                for already in already_installed {
+                    already.uninstall()?;
+                }
+                eprintln!("Successfully Uninstalled product, continuing with new installation");
+            },
+            InstallOverwriteOptions::Add => {
+                eprintln!("Will create an additional installation for this item")
+            },
+            InstallOverwriteOptions::Cancel => {
+                eprintln!("Wont continue with installation");
+                return Ok(());
+            }
+        }
         /* Launch installer */
         let binary_path = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
-        actual_candidate.install(&binary_path)
+        actual_candidate.install(&binary_path, install_options)
+    }
+
+    fn get_unusued_installation_path(&self, actual_candidate: &InstallationCandidate, all_installed: &Vec<InstalledProduct>) -> PathBuf {
+        let binary_path: std::path::PathBuf = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
+        binary_path
     }
 
     pub fn list_cache(&self) -> Option<Vec<InstallationCandidate>> {
@@ -1100,7 +1138,7 @@ mod tests {
             &client.config.products,
         )
         .unwrap();
-        let res = client.install(&search, None).await;
+        let res = client.install(&search, None, None).await;
         assert!(res.is_ok())
     }
 
@@ -1118,7 +1156,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = client.install(&search, Some(true)).await;
+        let res = client.install(&search, Some(true), None).await;
         assert!(res.is_ok())
     }
 
@@ -1272,7 +1310,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false))
+            .install(&candidate, Some(false), None)
             .await
             .expect("Failed to install item");
     }
@@ -1298,7 +1336,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false))
+            .install(&candidate, Some(false), None)
             .await
             .expect("Failed to install item");
     }
@@ -1324,7 +1362,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false))
+            .install(&candidate, Some(false), None)
             .await
             .expect("Failed to install item");
     }
@@ -1350,7 +1388,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false))
+            .install(&candidate, Some(false), None)
             .await
             .expect("Failed to install item");
     }
@@ -1377,7 +1415,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false))
+            .install(&candidate, Some(false), None)
             .await
             .expect("Failed to install item");
     }
