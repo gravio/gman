@@ -170,7 +170,7 @@ impl Client {
                 );
 
                 if prompt {
-                    if Self::prompt_confirm()? {
+                    if !Self::prompt_confirm()? {
                         println!("Will not uninstall this item");
                         continue;
                     }

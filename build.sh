@@ -18,6 +18,7 @@ elif [[ "$OSTYPE" == "freebsd"* ]]; then
 else
         os_type="unknown"
 fi
+arch="x64"
 
 # build the binary 
 cargo build $mode
@@ -28,7 +29,11 @@ cargo-sbom > $target_dir/sbom.json
 # generate checksum of artifacts
 checksums -v -c $target_dir --force
 
-zip $target_dir/${bin_name}_${os_type}_x64.zip $target_dir/$bin_name $target_dir/sbom.json $target_dir/release.hash
+zip_name=${bin_name}_${os_type}_$arch.zip
+zip $zip_name $target_dir/$bin_name $target_dir/sbom.json $target_dir/release.hash
 
 # re-checksum for zip file
 checksums -v -c $target_dir --force
+
+echo ""
+echo "Created release zip at $target_dir/$zip_name"
