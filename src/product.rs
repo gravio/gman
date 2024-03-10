@@ -43,10 +43,10 @@ impl<'de> Deserialize<'de> for PackageType {
 
         match value {
             serde_json::Value::String(val) => {
-                let result = PackageType::from_str(&val).map_err(|_| {
+                let result = PackageType::from_str(&val.to_ascii_lowercase()).map_err(|_| {
                     serde::de::Error::invalid_value(
                         serde::de::Unexpected::Str(&val),
-                        &"one of {appx, msi, msix, app, pkg, deb, apk, ipa, standaloneexe}",
+                        &"one of {appx, msi, msix, app, pkg, deb, apk, ipa, standaloneexe} (case insensitive)",
                     )
                 })?;
                 Ok(result)
@@ -62,8 +62,7 @@ impl FromStr for PackageType {
     type Err = GManError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_lowercase();
-        match s.as_str() {
+        match s {
             "appx" => Ok(Self::AppX),
             "msi" => Ok(Self::Msi),
             "msix" => Ok(Self::MsiX),
@@ -72,7 +71,7 @@ impl FromStr for PackageType {
             "pkg" => Ok(Self::Pkg),
             "deb" => Ok(Self::Deb),
             "apk" => Ok(Self::Apk),
-            "ioa" => Ok(Self::Ipa),
+            "ipa" => Ok(Self::Ipa),
             _ => Err(GManError::new("Not a valid PackageType string")),
         }
     }
@@ -124,6 +123,14 @@ pub struct FlavorMetadata {
     /// For StandaloneExe
     #[serde(rename = "LaunchArgs", skip_serializing_if = "Option::is_none")]
     pub launch_args: Option<Vec<String>>,
+
+    /// For StandaloneExe
+    #[serde(rename = "StopArgs", skip_serializing_if = "Option::is_none")]
+    pub stop_command: Option<Vec<String>>,
+
+    /// For StandaloneExe
+    #[serde(rename = "RunAsService", skip_serializing_if = "Option::is_none")]
+    pub run_as_service: Option<bool>,
 }
 
 const fn default_bool<const V: bool>() -> bool {

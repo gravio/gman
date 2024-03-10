@@ -1036,6 +1036,8 @@ mod tests {
                     install_path: None,
                     name_regex: None,
                     launch_args: None,
+                    run_as_service: None,
+                    stop_command: None,
                 }),
                 package_type: product::PackageType::Msi,
                 teamcity_metadata: TeamCityMetadata {

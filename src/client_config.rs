@@ -252,6 +252,8 @@ impl ClientConfig {
                             install_path: None,
                             name_regex: Some(String::from("some.uwp.sampleproduct")),
                             launch_args: None,
+                            stop_command: None,
+                            run_as_service: None,
                         }),
                     },
                     Flavor {
@@ -270,6 +272,8 @@ impl ClientConfig {
                             install_path: None,
                             name_regex: None,
                             launch_args: None,
+                            stop_command: None,
+                            run_as_service: None,
                         }),
                     },
                 ],

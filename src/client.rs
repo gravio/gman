@@ -997,6 +997,8 @@ mod tests {
                     install_path: None,
                     name_regex: None,
                     launch_args: None,
+                    stop_command: None,
+                    run_as_service: None,
                 }),
 
                 autorun: false,
@@ -1045,7 +1047,9 @@ mod tests {
                         display_name_regex: None,
                         install_path: None,
                         name_regex: None,
-                        launch_args: None
+                        launch_args: None,
+                        stop_command: None,
+                        run_as_service: None,
                     }),
                     autorun: false,
                 },
@@ -1063,7 +1067,10 @@ mod tests {
                         display_name_regex: None,
                         install_path: None,
                         name_regex: None,
-                        launch_args: None
+                        launch_args: None,
+                        stop_command: None,
+                        run_as_service: None,
+
                     }),
                     autorun: false,
                 }
