@@ -1,0 +1,226 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "JSON Schema for GMan Client Configurations",
+    "description": "",
+    "type": "object",
+    "properties": {
+        "LogLevel": {
+            "type": "string",
+            "default": "Off",
+            "enum": [
+                "Off",
+                "Trace",
+                "Debug",
+                "Info",
+                "Warn",
+                "Error"
+            ]
+        },
+        "Repositories": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/Repository"
+            }
+        },
+        "Products": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/Product"
+            }
+        },
+        "PublisherIdentities": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/PublisherIdentity"
+            }
+        },
+        "TempDownloadDirectory": {
+            "type": "string"
+        },
+        "CacheDirectory": {
+            "type": "string"
+        }
+    },
+    "$defs": {
+        "Platform": {
+            "type": "string",
+            "enum": [
+                "Windows",
+                "macOS",
+                "Linux",
+                "rpi",
+                "Android",
+                "iOS"
+            ]
+        },
+        "Repository": {
+            "type": "object",
+            "required": ["Name", "RepositoryType"],
+            "properties": {
+                "Name": {
+                    "type": "string"
+                },
+                "RepositoryType": {
+                    "type": "string",
+                    "enum": [
+                        "TeamCity"
+                    ]
+                },
+                "Platforms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Platform"
+                    }
+                },
+                "RepositoryServer": {
+                    "type": "string"
+                },
+                "Products": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "RepositoryCredentials": {
+                    "type": "object",
+                    "required": ["Type"],
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "enum": [
+                                "BearerToken",
+                                "BasicAuth"
+                            ]
+                        },
+                        "Token": {
+                            "type": "string"
+                        },
+                        "Username": {
+                            "type": "string"
+                        },
+                        "Password": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "Product": {
+            "type": "object",
+            "required": ["Name"],
+            "properties": {
+                "Name": {
+                    "type": "string"
+                },
+                "Flavors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Flavor"
+                    }
+                }
+            }
+        },
+        "Flavor": {
+            "type": "object",
+            "required": ["Id", "Platform", "PackageType"],
+            "properties": {
+              "Id": {
+                  "type": "string"
+              },
+              "Platform": {
+                  "$ref": "#/$defs/Platform"
+              },
+              "PackageType": {
+                  "type": "string",
+                  "enum": [
+                      "AppX",
+                      "Msi",
+                      "MsiX",
+                      "StandaloneExe",
+                      "App",
+                      "Pkg",
+                      "Deb",
+                      "ipa",
+                      "Apk"
+                  ]
+              },
+              "autorun": {
+                  "type": "boolean",
+                  "default": false
+              },
+              "TeamCityMetadata": {
+                  "type": "object",
+                  "required": ["TeamCityId", "TeamCityBinaryPath"],
+                  "properties": {
+                      "TeamCityId": {
+                          "type": "string"
+                      },
+                      "TeamCityBinaryPath": {
+                          "type": "string"
+                      }
+                  }
+              },
+              "Metadata": {
+                  "type": "object",
+                  "properties": {
+                      "NameRegex": {
+                          "type": "string"
+                      },
+                      "DisplayNameRegex": {
+                          "type": "string"
+                      },
+                      "InstallPath": {
+                          "type": "string"
+                      },
+                      "CFBundleIdentifier": {
+                          "type": "string"
+                      },
+                      "CFBundleName": {
+                          "type": "string"
+                      },
+                      "LaunchArgs": {
+                          "type": "array",
+                          "items": {
+                              "type": "string"
+                          }
+                      },
+                      "StopCommand": {
+                          "type": "array",
+                          "items": {
+                              "type": "string"
+                          }
+                      },
+                      "RunAsService": {
+                          "type": "boolean"
+                      }
+                  }
+              }
+            }
+        },
+        "PublisherIdentity": {
+            "type": "object",
+            "required": ["Name", "Id", "Products"],
+            "properties": {
+                "Name": {
+                    "type": "string"
+                },
+                "Id": {
+                    "type": "string"
+                },
+                "Platforms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Platform"
+                    }
+                },
+                "Products": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+           
+        }
+    }
+}
