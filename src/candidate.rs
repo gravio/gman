@@ -275,14 +275,15 @@ impl InstallationCandidate {
 
     /// Returns the file name of the file this InstallationCandidate represents
     pub fn get_binary_file_name(&self) -> String {
-        self.flavor
+        match self
+            .flavor
             .teamcity_metadata
             .teamcity_binary_path
             .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned()
+        {
+            Some(path) => path.to_str().unwrap().into(),
+            None => "--".into(),
+        }
     }
 
     /// Makes a file name for the InstallationCandidate, encoding the the necessary info to make lookups easy
