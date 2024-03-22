@@ -335,14 +335,14 @@ impl InstallationCandidate {
 
         if let InstallationResult::Succeeded = installation_result {
             if self.flavor.autorun {
-                self.autorun()?;
+                self.start_program()?;
             }
         }
         Ok(installation_result)
     }
 
     #[cfg(target_os = "macos")]
-    fn autorun_mac(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn start_program_mac(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Attempting to automatically launch application");
         if let Some(metadata) = &self.flavor.metadata {
             if let Some(bundle_name) = &metadata.cf_bundle_name {
@@ -360,20 +360,20 @@ impl InstallationCandidate {
         Ok(())
     }
 
-    fn autorun(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn start_program(&self) -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         {
-            self.autorun_windows()
+            self.start_program_windows()
         }
 
         #[cfg(target_os = "macos")]
         {
-            self.autorun_mac()
+            self.start_program_mac()
         }
     }
 
     #[cfg(target_os = "windows")]
-    fn autorun_windows(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn start_program_windows(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Attempting to automatically launch application");
         match self.flavor.package_type {
             PackageType::AppX | PackageType::MsiX => {
