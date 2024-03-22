@@ -430,6 +430,7 @@ impl InstallationCandidate {
                                     let install_output = Command::new("powershell")
                                         .arg("-Command")
                                         .arg(install_script_loc.to_str().unwrap())
+                                        .arg("-Force")
                                         .output()?;
 
                                     if !install_output.status.success() {
