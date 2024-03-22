@@ -17,7 +17,6 @@ use crate::product::PackageType;
 use crate::product::Product;
 use crate::{app, product, team_city, util, CandidateRepository, ClientConfig};
 
-use clap::builder::OsStr;
 use tabled::settings::{object::Rows, Alignment, Modify, Style};
 
 #[derive(Debug)]
@@ -26,8 +25,9 @@ pub struct Client {
     http_client: reqwest::Client,
 }
 impl Client {
+    #[cfg(test)]
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let client_config = ClientConfig::load_config::<OsStr>(None)?;
+        let client_config = ClientConfig::load_config::<&str>(None)?;
         app::init_logging(Some(client_config.log_level));
         let c = Client::new(client_config);
 
@@ -126,7 +126,7 @@ impl Client {
         &self,
         name: &str,
         version: Option<Version>,
-        path: Option<P>,
+        _path: Option<P>,
         prompt: Option<bool>,
     ) -> Result<(), Box<dyn std::error::Error>>
     where

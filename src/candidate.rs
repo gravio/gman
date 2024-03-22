@@ -374,8 +374,6 @@ impl InstallationCandidate {
 
     #[cfg(target_os = "windows")]
     fn autorun_windows(&self) -> Result<(), Box<dyn std::error::Error>> {
-        use std::{io::Read, os::windows::process::CommandExt};
-
         log::info!("Attempting to automatically launch application");
         match self.flavor.package_type {
             PackageType::AppX | PackageType::MsiX => {
