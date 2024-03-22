@@ -319,25 +319,26 @@ impl InstallationCandidate {
     where
         P: AsRef<Path>,
     {
+        let installation_result: InstallationResult;
         #[cfg(target_os = "windows")]
         {
-            self.install_windows(binary_path, options)?;
-            if self.flavor.autorun {
-                self.autorun_windows()?;
-            }
+            installation_result = self.install_windows(binary_path, options)?;
         }
 
         #[cfg(target_os = "macos")]
         {
-            install_mac(binary_path, options)?;
-            if self.flavor.autorun {
-                self.autorun_mac()?;
-            }
+            installation_result = self.install_mac(binary_path, options)?;
         }
 
         #[cfg(target_os = "linux")]
         {}
-        Ok(InstallationResult::Succeeded)
+
+        if let InstallationResult::Succeeded = installation_result {
+            if self.flavor.autorun {
+                self.autorun()?;
+            }
+        }
+        Ok(installation_result)
     }
 
     #[cfg(target_os = "macos")]
@@ -359,22 +360,70 @@ impl InstallationCandidate {
         Ok(())
     }
 
+    fn autorun(&self) -> Result<(), Box<dyn std::error::Error>> {
+        #[cfg(target_os = "windows")]
+        {
+            self.autorun_windows()
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            self.autorun_mac()
+        }
+    }
+
     #[cfg(target_os = "windows")]
     fn autorun_windows(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("Attempting to automatically launch application");
-        // if let Some(metadata) = &self.flavor.metadata {
-        //     if let Some(bundle_name) = metadata.get("CFBundleName") {
-        //         let output = Command::new("open")
-        //         .arg("-a")
-        //         .arg(bundle_name)
-        //         .output()?;
+        use std::{io::Read, os::windows::process::CommandExt};
 
-        //         if output.status.success() {
-        //             return Ok(());
-        //         }
-        //         return Err(Box::new(GManError::new(&format!("Failed to launch {}: {}", bundle_name, output.status))));
-        //    }
-        // };
+        log::info!("Attempting to automatically launch application");
+        match self.flavor.package_type {
+            PackageType::AppX | PackageType::MsiX => {
+                if let Some(metadata) = &self.flavor.metadata {
+                    if let Some(name_regex) = &metadata.name_regex {
+                        let command = {
+                            let parts = [
+                                r#"Function Get-App-Name {
+                                    $x=Get-StartApps | Where-Object {$_.AppId.StartsWith('"#,
+                                &name_regex,
+                                r#"')} | Select-Object -First 1 | Select -ExpandProperty AppId
+                                    return $x
+                                }
+                                    
+                                Function start_app {
+                                        param([string]$fname)
+                                        explorer.exe "shell:AppsFolder\$fname"
+                                }
+                                    
+                                start_app (Get-App-Name)"#,
+                            ];
+
+                            String::from_iter(parts)
+                        };
+
+                        let output = Command::new("powershell")
+                            .arg("-Command")
+                            .arg(command)
+                            .output()?;
+
+                        if output.status.success() {
+                            log::debug!("Successfully started application");
+                            return Ok(());
+                        }
+                        return Err(Box::new(GManError::new(&format!(
+                            "Failed to autorun application: Command returned an error: {}",
+                            output.status
+                        ))));
+                    }
+                }
+
+                return Err(Box::new(GManError::new("Can't autorun application: NameRegex must be supplied for AppX and MsiX package types, but one was not found")));
+            }
+            PackageType::Msi => {}
+            PackageType::StandaloneExe => {}
+            _ => {}
+        }
+
         Ok(())
     }
 
@@ -383,7 +432,7 @@ impl InstallationCandidate {
         &self,
         binary_path: P,
         _options: InstallOverwriteOptions,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    ) -> Result<InstallationResult, Box<dyn std::error::Error>>
     where
         P: AsRef<Path>,
     {
@@ -430,7 +479,6 @@ impl InstallationCandidate {
                                     let install_output = Command::new("powershell")
                                         .arg("-Command")
                                         .arg(install_script_loc.to_str().unwrap())
-                                        .arg("-Force")
                                         .output()?;
 
                                     if !install_output.status.success() {
@@ -443,7 +491,7 @@ impl InstallationCandidate {
                                                      &format!("Failed to install {}, couldn't run install script successfully", self.product_name),
                                                  )));
                                     }
-                                    return Ok(());
+                                    return Ok(InstallationResult::Succeeded);
                                 }
                                 break;
                             }
@@ -481,6 +529,7 @@ impl InstallationCandidate {
                     self.product_name
                 ))));
             }
+            return Ok(InstallationResult::Succeeded);
         } else if self.flavor.package_type == PackageType::Msi {
             let output = Command::new("msiexec")
                 .args(["/i", binary_path.as_ref().to_str().unwrap(), "/passive"])
@@ -490,7 +539,7 @@ impl InstallationCandidate {
             if output.status.success() {
                 // Convert the output bytes to a string
                 log::debug!("Successfully installed {}", self.product_name);
-                return Ok(());
+                return Ok(InstallationResult::Succeeded);
             }
             if output.status.code().unwrap_or_default() == 1602 {
                 return Err(Box::new(GManError::new("User canceled installation")));
@@ -502,7 +551,7 @@ impl InstallationCandidate {
 
         log::warn!("Didnt install anything");
 
-        Ok(())
+        Ok(InstallationResult::Skipped)
     }
 }
 

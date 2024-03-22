@@ -410,10 +410,15 @@ impl Client {
         match install_options {
             InstallOverwriteOptions::Overwrite => {
                 eprintln!("Will overwrite any existing installations with this one");
-                for already in already_installed {
-                    already.uninstall()?;
+
+                if already_installed.is_empty() {
+                    eprintln!("No products to uninstall, continuing with new installation");
+                } else {
+                    for already in already_installed {
+                        already.uninstall()?;
+                    }
+                    eprintln!("Successfully Uninstalled product, continuing with new installation");
                 }
-                eprintln!("Successfully Uninstalled product, continuing with new installation");
             }
             InstallOverwriteOptions::Add => {
                 eprintln!("Will create an additional installation for this item")
@@ -1382,6 +1387,32 @@ mod tests {
     async fn install_studio_specific_version() {
         let client = Client::load().expect("Failed to load client");
         let target: Target = Target::Version("5.2.4683".to_owned());
+
+        let candidate = SearchCandidate::new(
+            &PRODUCT_GRAVIO_STUDIO.name,
+            match &target {
+                Target::Identifier(_) => None,
+                Target::Version(x) => Some(x.as_str()),
+            },
+            match &target {
+                Target::Identifier(x) => Some(x.as_str()),
+                Target::Version(_) => None,
+            },
+            None,
+            &client.config.products,
+        )
+        .unwrap();
+
+        client
+            .install(&candidate, Some(false), None)
+            .await
+            .expect("Failed to install item");
+    }
+
+    #[tokio::test]
+    async fn install_studio_by_branch() {
+        let client = Client::load().expect("Failed to load client");
+        let target: Target = Target::Identifier("webhooks".to_owned());
 
         let candidate = SearchCandidate::new(
             &PRODUCT_GRAVIO_STUDIO.name,
