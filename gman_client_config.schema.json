@@ -144,7 +144,7 @@
                       "Apk"
                   ]
               },
-              "autorun": {
+              "Autorun": {
                   "type": "boolean",
                   "default": false
               },
