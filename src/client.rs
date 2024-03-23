@@ -407,6 +407,8 @@ impl Client {
             }
         };
 
+        let binary_path = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
+
         match install_options {
             InstallOverwriteOptions::Overwrite => {
                 eprintln!("Will overwrite any existing installations with this one");
@@ -428,9 +430,17 @@ impl Client {
                 return Ok(InstallationResult::Canceled);
             }
         }
+
         /* Launch installer */
-        let binary_path = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
-        actual_candidate.install(&binary_path, install_options)
+        let installation_result = actual_candidate.install(&binary_path, install_options);
+
+        /* Launch autorun if specified */
+        if let Ok(InstallationResult::Succeeded) = installation_result {
+            if actual_candidate.flavor.autorun {
+                actual_candidate.start_program()?;
+            }
+        }
+        installation_result
     }
 
     pub fn list_cache(&self) -> Option<Vec<InstallationCandidate>> {

@@ -333,11 +333,6 @@ impl InstallationCandidate {
         #[cfg(target_os = "linux")]
         {}
 
-        if let InstallationResult::Succeeded = installation_result {
-            if self.flavor.autorun {
-                self.start_program()?;
-            }
-        }
         Ok(installation_result)
     }
 
@@ -360,7 +355,7 @@ impl InstallationCandidate {
         Ok(())
     }
 
-    fn start_program(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn start_program(&self) -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         {
             self.start_program_windows()
