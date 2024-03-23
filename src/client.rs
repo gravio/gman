@@ -300,6 +300,7 @@ impl Client {
         search: &SearchCandidate,
         automatic_upgrade: Option<bool>,
         prompt: Option<bool>,
+        autorun: Option<bool>,
     ) -> Result<InstallationResult, Box<dyn std::error::Error>> {
         log::debug!(
             "Setting up installation prep for {} @ {}",
@@ -436,7 +437,8 @@ impl Client {
 
         /* Launch autorun if specified */
         if let Ok(InstallationResult::Succeeded) = installation_result {
-            if actual_candidate.flavor.autorun {
+            let actual_autorun = autorun.unwrap_or(actual_candidate.flavor.autorun);
+            if actual_autorun {
                 actual_candidate.start_program()?;
             }
         }
@@ -1164,7 +1166,7 @@ mod tests {
             &client.config.products,
         )
         .unwrap();
-        let res = client.install(&search, None, None).await;
+        let res = client.install(&search, None, None, None).await;
         assert!(res.is_ok())
     }
 
@@ -1182,7 +1184,7 @@ mod tests {
         )
         .unwrap();
 
-        let res = client.install(&search, Some(true), None).await;
+        let res = client.install(&search, Some(true), None, None).await;
         assert!(res.is_ok())
     }
 
@@ -1336,7 +1338,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false), None)
+            .install(&candidate, Some(false), None, None)
             .await
             .expect("Failed to install item");
     }
@@ -1362,7 +1364,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false), None)
+            .install(&candidate, Some(false), None, None)
             .await
             .expect("Failed to install item");
     }
@@ -1388,7 +1390,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false), None)
+            .install(&candidate, Some(false), None, None)
             .await
             .expect("Failed to install item");
     }
@@ -1414,7 +1416,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false), None)
+            .install(&candidate, Some(false), None, None)
             .await
             .expect("Failed to install item");
     }
@@ -1440,7 +1442,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false), None)
+            .install(&candidate, Some(false), None, None)
             .await
             .expect("Failed to install item");
     }
@@ -1467,7 +1469,7 @@ mod tests {
         .unwrap();
 
         client
-            .install(&candidate, Some(false), None)
+            .install(&candidate, Some(false), None, None)
             .await
             .expect("Failed to install item");
     }

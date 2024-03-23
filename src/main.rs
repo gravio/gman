@@ -12,6 +12,7 @@ use candidate::{InstallationCandidate, Version};
 use clap::Parser;
 use cli::Commands;
 use client_config::*;
+use hyper_util::server::conn::auto;
 use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
@@ -140,6 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             flavor,
             automatic_upgrade,
             prompt,
+            autorun,
         }) => {
             let client = Client::new(config);
             client.init();
@@ -173,7 +175,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         candidate.flavor.id,
                     );
                     match client
-                        .install(&candidate, *automatic_upgrade, *prompt)
+                        .install(&candidate, *automatic_upgrade, *prompt, *autorun)
                         .await
                         .expect("Failed to install item")
                     {

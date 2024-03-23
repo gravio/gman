@@ -33,7 +33,7 @@ pub enum Commands {
         show_installed: bool,
     },
     /// Uninstalls the candidate
-    Uninstall { 
+    Uninstall {
         #[clap(
             help = "Product name, taken from the `products` section of the gman_client_config.json5"
         )]
@@ -52,7 +52,7 @@ pub enum Commands {
             long,
             help = "whether to prompt to uninstall. Only used when multiple identical products are installed. Set to false to uninstall all products automatically"
         )]
-        prompt: Option<bool>
+        prompt: Option<bool>,
     },
     /// Installs the [candidate] with optional [version]
     Install {
@@ -74,7 +74,12 @@ pub enum Commands {
             long,
             help = "whether to prompt to uninstall/replace. Only used when multiple identical products are installed. Set to false to uninstall all products automatically"
         )]
-        prompt: Option<bool>
+        prompt: Option<bool>,
+        #[clap(
+            long,
+            help = "whether to launch the installaed application automatically after a successful installation. Leave blank to defer to the configuration json settings for the product flavor."
+        )]
+        autorun: Option<bool>,
     },
     /// Clears the cache of all matching criteria, or all of it, if nothing specified
     Cache {
