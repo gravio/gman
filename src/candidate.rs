@@ -303,6 +303,7 @@ impl InstallationCandidate {
     }
 
     /// Gets the path of the file that the InstallationCandidate downloads to on disk
+    /// This is the download path with the name of the binary artifact, not the final location on disk after installation
     pub fn make_output_for_candidate<P>(&self, dir: P) -> PathBuf
     where
         P: AsRef<Path>,
@@ -327,7 +328,7 @@ impl InstallationCandidate {
 
         #[cfg(target_os = "macos")]
         {
-            installation_result = self.install_mac(binary_path, options)?;
+            installation_result = install_mac(binary_path, options)?;
         }
 
         #[cfg(target_os = "linux")]
@@ -336,6 +337,7 @@ impl InstallationCandidate {
         Ok(installation_result)
     }
 
+    /// Uses `open` to launch this item on mac system
     #[cfg(target_os = "macos")]
     fn start_program_mac(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Attempting to automatically launch application");
@@ -355,6 +357,7 @@ impl InstallationCandidate {
         Ok(())
     }
 
+    /// Launches this item on the system
     pub fn start_program(&self) -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         {
@@ -548,17 +551,17 @@ impl InstallationCandidate {
     }
 }
 
+/// Given a binary installer at [binary_path], installs this item to the system
 #[cfg(target_os = "macos")]
 fn install_mac<P>(
     binary_path: P,
     options: InstallOverwriteOptions,
-) -> Result<(), Box<dyn std::error::Error>>
+) -> Result<InstallationResult, Box<dyn std::error::Error>>
 where
     P: AsRef<Path>,
 {
     use indicatif::ProgressBar;
-    use shellexpand::full;
-    use std::{ops::Add, time::Duration};
+    use std::time::Duration;
 
     /* mount the dmg file */
     let mount = {
@@ -665,16 +668,17 @@ where
                                     pb
                                 };
 
-                                let mut i = 1;
+                                let mut i: u8 = 1;
+                                const MAX_TRY_LIMIT: u8 = 200;
                                 let parent = dst_1.parent().unwrap().to_owned();
                                 while dst_1.exists() {
                                     dst_1 = parent.join(format!("{}_{}", &package_file_name, i));
                                     i += 1;
-                                    if i >= 200 {
+                                    if i >= MAX_TRY_LIMIT {
                                         log::error!(
-                                            "Tried 200 times to a valid free path, terminating."
+                                            "Tried {} times to a valid free path, terminating.", MAX_TRY_LIMIT
                                         );
-                                        return Err(Box::new(GManError::new("Tried 200 trimes to find a valid free path during installation")));
+                                        return Err(Box::new(GManError::new(&format!("Tried {} trimes to find a valid free path during installation", MAX_TRY_LIMIT))));
                                     }
                                 }
                                 dst_1
@@ -682,7 +686,7 @@ where
 
                             dst.file_name().unwrap().to_str().unwrap().to_owned()
                         }
-                        InstallOverwriteOptions::Cancel => return Ok(()),
+                        InstallOverwriteOptions::Cancel => return Ok(InstallationResult::Canceled),
                     };
 
                     let src = &package.path;
@@ -739,7 +743,7 @@ where
 
             unmount_mac(&volume)?;
 
-            Ok(())
+            Ok(InstallationResult::Succeeded)
         }
         None => {
             log::error!("Failed to get mount point");
@@ -748,21 +752,7 @@ where
     }
 }
 
-#[cfg(target_os = "macos")]
-fn count_with_symlinks<P: AsRef<Path>, Q: AsRef<Path>>(
-    source: P,
-) -> Result<usize, Box<dyn std::error::Error>> {
-    use walkdir::WalkDir;
-    let walker = WalkDir::new(&source).follow_links(true);
-
-    let mut count: usize = 0;
-    for entry in walker {
-        let entry = entry?;
-        count += 1;
-    }
-    Ok(count)
-}
-
+/// Uses `hdiutil` to unmount a disk image given by [volume]
 #[cfg(target_os = "macos")]
 fn unmount_mac<P>(volume: P) -> Result<(), Box<dyn std::error::Error>>
 where
@@ -842,6 +832,7 @@ impl From<InstalledAppXProduct> for InstalledProduct {
 }
 
 impl InstalledProduct {
+    /// Terminates the processes associated with this item
     pub fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Shutting down {} if running", &self.product_name);
 
@@ -866,6 +857,7 @@ impl InstalledProduct {
         }
     }
 
+    /// Uninstalls this item from the system
     pub fn uninstall(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Uninstalling {}", &self.product_name);
         #[cfg(target_os = "windows")]
@@ -927,6 +919,7 @@ impl InstalledProduct {
     }
 }
 
+/// Information about the package structure of this candidate on MacOS, like whether it is an App or Pkg, and what the path to its final destination is
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Debug)]
 struct MacPackage {
@@ -939,7 +932,7 @@ struct MacPackage {
 fn get_path_to_application_mac(
     installed: &InstalledProduct,
 ) -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
-    use std::{collections::HashMap, fs};
+    use std::collections::HashMap;
 
     /* list contents of /Applications */
     match std::fs::read_dir(MAC_APPLICATIONS_DIR) {
@@ -993,6 +986,7 @@ fn get_path_to_application_mac(
     Ok(None)
 }
 
+/// Gets the PIDs of every process running on a Mac system. Uses launchctl
 #[cfg(target_os = "macos")]
 fn get_running_app_pids_mac() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     log::debug!("Getting running processes");
@@ -1060,6 +1054,7 @@ fn shutdown_program_mac(installed: &InstalledProduct) -> Result<(), Box<dyn std:
     }
 }
 
+/// Package information on Windows only AppX cadidates, such as the name, version, and full identifier
 #[cfg(windows)]
 #[derive(Debug, Deserialize)]
 pub struct InstalledAppXProduct {
