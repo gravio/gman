@@ -1,3 +1,4 @@
+use clap::error;
 use regex::Regex;
 use serde::Deserialize;
 use std::{
@@ -551,6 +552,206 @@ impl InstallationCandidate {
     }
 }
 
+/// Mounts an image given by [binary_path] via `hdiutil`
+#[cfg(target_os = "macos")]
+fn mount_volume_mac<P>(binary_path: P) -> Result<Option<PathBuf>, Box<dyn std::error::Error>>
+where
+    P: AsRef<Path>,
+{
+    let output = Command::new("hdiutil")
+        .arg("attach")
+        .arg(binary_path.as_ref().to_str().unwrap())
+        .output()?;
+
+    // Check if the command was successful
+    if output.status.success() {
+        log::debug!("Successfully mounted dmg file");
+        // Convert the output bytes to a string
+        let result = String::from_utf8_lossy(&output.stdout);
+        let lines = result.split('\n');
+
+        let mut mount_point: Option<PathBuf> = None;
+        for line in lines {
+            let trimmed = line.trim();
+            let caps_volume: Vec<&str> = match MOUNTED_VOLUME_REGEX.captures(trimmed) {
+                Some(c) => c,
+                None => {
+                    continue;
+                }
+            }
+            .iter()
+            .skip(1)
+            .filter_map(|m| m.map(|m| m.as_str()))
+            .collect();
+            let mp = caps_volume.first().unwrap().to_string();
+            let pb = PathBuf::from_str(&mp).unwrap();
+            mount_point = Some(pb);
+            break;
+        }
+        Ok(mount_point)
+    } else {
+        Err(Box::new(GManError::new(
+            "Unknown error occurred while making temporary folder",
+        )))
+    }
+}
+
+/// Given a mounted volume at [volume], finds the first .app or .pkg file and returns it, if any
+#[cfg(target_os = "macos")]
+fn find_mounted_application(
+    volume: &Path,
+) -> Result<Option<MountedMacPackage>, Box<dyn std::error::Error>> {
+    let vol_str = volume.to_string_lossy();
+    log::info!("Got mount point for application: {}", vol_str);
+    log::info!("Checking if mounted contents are .app or .pkg");
+
+    let package_type: Option<MountedMacPackage> = {
+        let output = Command::new("ls").arg(&volume).output()?;
+        if output.status.success() {
+            log::debug!("ls'd mounted volume");
+            let result = String::from_utf8_lossy(&output.stdout);
+            let lines = result.split('\n').collect::<Vec<&str>>();
+            let found_app = lines.iter().find(|x| x.ends_with(".app"));
+            match found_app {
+                Some(app_path) => {
+                    let full_path = volume.join(app_path);
+
+                    Some(MountedMacPackage {
+                        is_app: true,
+                        is_pkg: false,
+                        path: full_path,
+                    })
+                }
+                None => {
+                    let found_pkg = lines.iter().find(|x| x.ends_with(".pkg"));
+                    match found_pkg {
+                        Some(app_path) => {
+                            let full_path = volume.join(app_path);
+                            Some(MountedMacPackage {
+                                is_app: false,
+                                is_pkg: true,
+                                path: full_path,
+                            })
+                        }
+                        None => None,
+                    }
+                }
+            }
+        } else {
+            return Err(Box::new(GManError::new(&format!(
+                "Failed to ls mounted directory: {}",
+                output.status
+            ))));
+        }
+    };
+
+    Ok(package_type)
+}
+
+/// Given a mac .pkg package type, install it to the system
+#[cfg(target_os = "macos")]
+fn install_mac_pkg(
+    package: &MountedMacPackage,
+    volume: &Path,
+    options: InstallOverwriteOptions,
+) -> Result<InstallationResult, Box<dyn std::error::Error>> {
+    log::debug!("Inner contensts are .pkg, will run dpkg installer");
+    let output = Command::new("installer")
+        .arg("-pkg")
+        .arg(&volume)
+        .arg("-target")
+        .arg("/")
+        .output()?;
+
+    if output.status.success() {
+        log::debug!("Successfully ran installer for package contents");
+    } else {
+        log::error!(
+            "Failed to run installer for package contents: {}",
+            &output.status
+        );
+        return Err(Box::new(GManError::new(&format!(
+            "Failed to run installer for package contents: {}",
+            &output.status
+        ))));
+    }
+    Ok(InstallationResult::Succeeded)
+}
+/// Given a Mac .app package type, install it to the system
+#[cfg(target_os = "macos")]
+fn install_mac_app(
+    package: &MountedMacPackage,
+    options: InstallOverwriteOptions,
+) -> Result<InstallationResult, Box<dyn std::error::Error>> {
+    use indicatif::ProgressBar;
+    use std::time::Duration;
+
+    let package_file_name = package.get_filename();
+    let folder_name = match options {
+        InstallOverwriteOptions::Overwrite => package_file_name,
+        InstallOverwriteOptions::Add => {
+            let dst = {
+                let mut dst_1 = {
+                    let mut pb = Path::new(&MAC_APPLICATIONS_DIR).to_path_buf();
+                    pb.push(&package_file_name);
+                    pb
+                };
+
+                let mut i: u8 = 1;
+                const MAX_TRY_LIMIT: u8 = 200;
+                let parent = dst_1.parent().unwrap().to_owned();
+                while dst_1.exists() {
+                    dst_1 = parent.join(format!("{}_{}", &package_file_name, i));
+                    i += 1;
+                    if i >= MAX_TRY_LIMIT {
+                        log::error!(
+                            "Tried {} times to a valid free path, terminating.",
+                            MAX_TRY_LIMIT
+                        );
+                        return Err(Box::new(GManError::new(&format!(
+                            "Tried {} trimes to find a valid free path during installation",
+                            MAX_TRY_LIMIT
+                        ))));
+                    }
+                }
+                dst_1
+            };
+
+            dst.file_name().unwrap().to_str().unwrap().to_owned()
+        }
+        InstallOverwriteOptions::Cancel => return Ok(InstallationResult::Canceled),
+    };
+
+    let src = &package.path;
+    let dst = PathBuf::from(&MAC_APPLICATIONS_DIR).join(folder_name);
+
+    log::debug!(
+        "Inner contents are .app, will copy directly from {} to {}",
+        &src.to_string_lossy(),
+        &dst.to_string_lossy()
+    );
+
+    let progress_bar = ProgressBar::new_spinner()
+        .with_message(format!("Copying contents to {}", dst.to_string_lossy()));
+
+    progress_bar.enable_steady_tick(Duration::from_millis(10));
+    let output = Command::new("cp")
+        .arg("-R")
+        .arg("-a")
+        .arg("-f")
+        .arg(src)
+        .arg(&dst)
+        .output()?;
+    progress_bar.finish_with_message("Copied items to folder");
+    let ir = if output.status.success() {
+        log::debug!("Copied app to {}", dst.to_string_lossy());
+        InstallationResult::Succeeded
+    } else {
+        InstallationResult::Canceled
+    };
+
+    Ok(ir)
+}
 /// Given a binary installer at [binary_path], installs this item to the system
 #[cfg(target_os = "macos")]
 fn install_mac<P>(
@@ -560,48 +761,8 @@ fn install_mac<P>(
 where
     P: AsRef<Path>,
 {
-    use indicatif::ProgressBar;
-    use std::time::Duration;
-
     /* mount the dmg file */
-    let mount = {
-        let output = Command::new("hdiutil")
-            .arg("attach")
-            .arg(binary_path.as_ref().to_str().unwrap())
-            .output()?;
-
-        // Check if the command was successful
-        if output.status.success() {
-            log::debug!("Successfully mounted dmg file");
-            // Convert the output bytes to a string
-            let result = String::from_utf8_lossy(&output.stdout);
-            let lines = result.split('\n');
-
-            let mut mount_point: Option<PathBuf> = None;
-            for line in lines {
-                let trimmed = line.trim();
-                let caps_volume: Vec<&str> = match MOUNTED_VOLUME_REGEX.captures(trimmed) {
-                    Some(c) => c,
-                    None => {
-                        continue;
-                    }
-                }
-                .iter()
-                .skip(1)
-                .filter_map(|m| m.map(|m| m.as_str()))
-                .collect();
-                let mp = caps_volume.first().unwrap().to_string();
-                let pb = PathBuf::from_str(&mp).unwrap();
-                mount_point = Some(pb);
-                break;
-            }
-            mount_point
-        } else {
-            return Err(Box::new(GManError::new(
-                "Unknown error occurred while making temporary folder",
-            )));
-        }
-    };
+    let mount = mount_volume_mac(binary_path)?;
 
     match mount {
         Some(volume) => {
@@ -609,141 +770,27 @@ where
             log::info!("Got mount point for application: {}", vol_str);
             log::info!("Checking if mounted contents are .app or .pkg");
 
-            let package_type: Option<MacPackage> = {
-                let output = Command::new("ls").arg(&volume).output()?;
-                if output.status.success() {
-                    log::debug!("ls'd mounted volume");
-                    let result = String::from_utf8_lossy(&output.stdout);
-                    let lines = result.split('\n').collect::<Vec<&str>>();
-                    let found_app = lines.iter().find(|x| x.ends_with(".app"));
-                    match found_app {
-                        Some(app_path) => {
-                            let full_path = volume.join(app_path);
+            let package_type: Option<MountedMacPackage> = find_mounted_application(&volume)?;
 
-                            Some(MacPackage {
-                                is_app: true,
-                                is_pkg: false,
-                                path: full_path,
-                            })
-                        }
-                        None => {
-                            let found_pkg = lines.iter().find(|x| x.ends_with(".pkg"));
-                            match found_pkg {
-                                Some(app_path) => {
-                                    let full_path = volume.join(app_path);
-                                    Some(MacPackage {
-                                        is_app: false,
-                                        is_pkg: true,
-                                        path: full_path,
-                                    })
-                                }
-                                None => None,
-                            }
-                        }
-                    }
-                } else {
-                    return Err(Box::new(GManError::new(&format!(
-                        "Failed to ls mounted directory: {}",
-                        output.status
-                    ))));
-                }
-            };
-
-            if let Some(package) = package_type {
-                if package.is_app {
-                    let package_file_name = package
-                        .path
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string();
-                    let folder_name = match options {
-                        InstallOverwriteOptions::Overwrite => package_file_name.to_owned(),
-                        InstallOverwriteOptions::Add => {
-                            let dst = {
-                                let mut dst_1 = {
-                                    let mut pb = Path::new(&MAC_APPLICATIONS_DIR).to_path_buf();
-                                    pb.push(&package_file_name);
-                                    pb
-                                };
-
-                                let mut i: u8 = 1;
-                                const MAX_TRY_LIMIT: u8 = 200;
-                                let parent = dst_1.parent().unwrap().to_owned();
-                                while dst_1.exists() {
-                                    dst_1 = parent.join(format!("{}_{}", &package_file_name, i));
-                                    i += 1;
-                                    if i >= MAX_TRY_LIMIT {
-                                        log::error!(
-                                            "Tried {} times to a valid free path, terminating.", MAX_TRY_LIMIT
-                                        );
-                                        return Err(Box::new(GManError::new(&format!("Tried {} trimes to find a valid free path during installation", MAX_TRY_LIMIT))));
-                                    }
-                                }
-                                dst_1
-                            };
-
-                            dst.file_name().unwrap().to_str().unwrap().to_owned()
-                        }
-                        InstallOverwriteOptions::Cancel => return Ok(InstallationResult::Canceled),
-                    };
-
-                    let src = &package.path;
-                    let dst = PathBuf::from(&MAC_APPLICATIONS_DIR).join(folder_name);
-
-                    log::debug!(
-                        "Inner contents are .app, will copy directly from {} to {}",
-                        &src.to_string_lossy(),
-                        &dst.to_string_lossy()
-                    );
-
-                    let progress_bar = ProgressBar::new_spinner()
-                        .with_message(format!("Copying contents to {}", dst.to_string_lossy()));
-
-                    progress_bar.enable_steady_tick(Duration::from_millis(10));
-                    let output = Command::new("cp")
-                        .arg("-R")
-                        .arg("-a")
-                        .arg("-f")
-                        .arg(src)
-                        .arg(&dst)
-                        .output()?;
-                    progress_bar.finish_with_message("Copied items to folder");
-                    if output.status.success() {
-                        log::debug!("Copied app to {}", dst.to_string_lossy());
-                    }
-                } else if package.is_pkg {
-                    log::debug!("Inner contensts are .pkg, will run dpkg installer");
-                    let output = Command::new("installer")
-                        .arg("-pkg")
-                        .arg(&volume)
-                        .arg("-target")
-                        .arg("/")
-                        .output()?;
-
-                    if output.status.success() {
-                        log::debug!("Successfully ran installer for package contents");
+            let installation_result: Result<InstallationResult, Box<dyn std::error::Error>> =
+                if let Some(package) = package_type {
+                    if package.is_app {
+                        install_mac_app(&package, options)
+                    } else if package.is_pkg {
+                        install_mac_pkg(&package, &volume, options)
                     } else {
-                        log::error!(
-                            "Failed to run installer for package contents: {}",
-                            &output.status
-                        );
-                        return Err(Box::new(GManError::new(&format!(
-                            "Failed to run installer for package contents: {}",
-                            &output.status
-                        ))));
+                        log::warn!("Mounted item but contents were neither app nor pkg");
+                        Ok(InstallationResult::Skipped)
                     }
                 } else {
-                    log::warn!("Mounted item but contents were neither app nor pkg");
-                }
-            } else {
-                log::warn!("Mounted item but could not extract contents");
-            }
+                    log::warn!("Mounted item but could not extract contents");
+                    Ok(InstallationResult::Canceled)
+                };
 
+            /* Unmount regardless of error status */
             unmount_mac(&volume)?;
 
-            Ok(InstallationResult::Succeeded)
+            installation_result
         }
         None => {
             log::error!("Failed to get mount point");
@@ -850,6 +897,7 @@ impl InstalledProduct {
             &self.product_name
         );
         if cfg!(macos) {
+            if let PackageType::App = self.package_type { /* check what  */ }
             true
         } else {
             log::trace!("Not mac or linux, will unconditionally uninstall");
@@ -919,13 +967,21 @@ impl InstalledProduct {
     }
 }
 
-/// Information about the package structure of this candidate on MacOS, like whether it is an App or Pkg, and what the path to its final destination is
+/// Information about the mounted package structure of this candidate on MacOS, like whether it is an App or Pkg, and what the path to its final destination is
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Debug)]
-struct MacPackage {
+struct MountedMacPackage {
     is_pkg: bool,
     is_app: bool,
     path: PathBuf,
+}
+
+impl MountedMacPackage {
+    /// Gets the filename of this MacPackage
+    /// i.e., `/mnt/volume_a/this_package.app -> "this_package.app"`
+    fn get_filename(&self) -> String {
+        self.path.file_name().unwrap().to_str().unwrap().to_string()
+    }
 }
 
 #[cfg(target_os = "macos")]
