@@ -895,15 +895,19 @@ impl InstalledProduct {
             "Checking whether installation item {} should be marked for uninstallation",
             &self.product_name
         );
-        if cfg!(target_os = "macos") {
+        #[cfg(target_os = "macos")]
+        {
             self.should_uninstall_mac(binary_path)
-        } else {
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
             log::trace!("Not linux or mac, will mark this item for uninstallation unconditionally");
             Ok(true)
         }
     }
 
     /// Checks whether this item should be uninstalled. For .app items, this means checking for installed applications with the same folder name
+    #[cfg(target_os = "macos")]
     fn should_uninstall_mac<P>(&self, binary_path: P) -> Result<bool, Box<dyn std::error::Error>>
     where
         P: AsRef<Path>,
@@ -1019,6 +1023,7 @@ struct MountedMacPackage {
     path: PathBuf,
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 impl MountedMacPackage {
     /// Gets the filename of this MacPackage
     /// i.e., `/mnt/volume_a/this_package.app -> "this_package.app"`

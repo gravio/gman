@@ -1,6 +1,6 @@
 [package]
 name = "graviomanager"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["nf"]
 description = "Manages Asteria products on a machine"
 documentation = "github.com/gravio/graviomanager"
