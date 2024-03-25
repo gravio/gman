@@ -766,10 +766,6 @@ where
 
     match mount {
         Some(volume) => {
-            let vol_str = volume.to_string_lossy();
-            log::info!("Got mount point for application: {}", vol_str);
-            log::info!("Checking if mounted contents are .app or .pkg");
-
             let package_type: Option<MountedMacPackage> = find_mounted_application(&volume)?;
 
             let installation_result: Result<InstallationResult, Box<dyn std::error::Error>> =
@@ -788,7 +784,7 @@ where
                 };
 
             /* Unmount regardless of error status */
-            unmount_mac(&volume)?;
+            unmount_volume_mac(&volume)?;
 
             installation_result
         }
@@ -801,7 +797,7 @@ where
 
 /// Uses `hdiutil` to unmount a disk image given by [volume]
 #[cfg(target_os = "macos")]
-fn unmount_mac<P>(volume: P) -> Result<(), Box<dyn std::error::Error>>
+fn unmount_volume_mac<P>(volume: P) -> Result<(), Box<dyn std::error::Error>>
 where
     P: AsRef<Path>,
 {
@@ -891,18 +887,65 @@ impl InstalledProduct {
     }
 
     /// Whether this item should be uninstalled -- used primarily on Mac installations where multiple items may inhabit the /Applicatiosn folder
-    pub fn should_uninstall(&self) -> bool {
+    pub fn should_uninstall<P>(&self, binary_path: P) -> Result<bool, Box<dyn std::error::Error>>
+    where
+        P: AsRef<Path>,
+    {
         log::trace!(
-            "Checking whether installation item {} should be uninstalled",
+            "Checking whether installation item {} should be marked for uninstallation",
             &self.product_name
         );
-        if cfg!(macos) {
-            if let PackageType::App = self.package_type { /* check what  */ }
-            true
+        if cfg!(target_os = "macos") {
+            self.should_uninstall_mac(binary_path)
         } else {
-            log::trace!("Not mac or linux, will unconditionally uninstall");
-            true
+            log::trace!("Not linux or mac, will mark this item for uninstallation unconditionally");
+            Ok(true)
         }
+    }
+
+    /// Checks whether this item should be uninstalled. For .app items, this means checking for installed applications with the same folder name
+    fn should_uninstall_mac<P>(&self, binary_path: P) -> Result<bool, Box<dyn std::error::Error>>
+    where
+        P: AsRef<Path>,
+    {
+        if let PackageType::App = self.package_type {
+            log::trace!(
+                "Item is macos .app package type, will mount and examine the actual contents"
+            );
+            // 1. Mount the volume
+            let mount = mount_volume_mac(binary_path)?;
+            // 2. Get the actual .app folder name for the inner application
+            let package = match mount {
+                Some(volume) => {
+                    let package_type: Option<MountedMacPackage> =
+                        find_mounted_application(&volume)?;
+
+                    /* Unmount regardless of error status */
+                    unmount_volume_mac(&volume)?;
+
+                    package_type
+                }
+                None => {
+                    log::error!("Failed to get mount point");
+                    return Err(Box::new(GManError::new("Failed to get mount point")));
+                }
+            };
+            if let Some(mounted_package) = package {
+                // 3. Check the known items in /applications
+                let pb = Path::new(&MAC_APPLICATIONS_DIR)
+                    .to_path_buf()
+                    .join(mounted_package.get_filename());
+                if pb == self.path {
+                    log::info!(
+                        "Installed item with same folder name exists ({}), will mark this item for uninstallation", &self.path.to_string_lossy()
+                    );
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
+        log::trace!("Item is not a .app package, will mark this item for uninstallation");
+        Ok(true)
     }
 
     /// Uninstalls this item from the system
@@ -1022,7 +1065,7 @@ fn get_path_to_application_mac(
                                 }
                             }
                             Err(e) => {
-                                log::error!(
+                                log::warn!(
                                     "Failed to read contents of {}: {e}",
                                     &app_path.to_str().unwrap()
                                 );

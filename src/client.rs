@@ -377,11 +377,12 @@ impl Client {
         };
 
         /* uninstall any previous, old versions */
+        let binary_path = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
         let all_installed = &self.get_installed();
         let already_installed = all_installed
             .iter()
             .filter(|x| x.product_name.to_lowercase() == search.product_name.to_lowercase())
-            .filter(|x| x.should_uninstall())
+            .filter(|x| x.should_uninstall(&binary_path).unwrap_or(false))
             .collect::<Vec<&InstalledProduct>>();
 
         if already_installed
@@ -432,7 +433,6 @@ impl Client {
         }
 
         /* Launch installer */
-        let binary_path = actual_candidate.make_output_for_candidate(&self.config.cache_directory);
         let installation_result = actual_candidate.install(&binary_path, install_options);
 
         /* Launch autorun if specified */
@@ -655,7 +655,7 @@ impl Client {
                                     }
                                 }
                                 Err(e) => {
-                                    log::error!(
+                                    log::warn!(
                                         "Failed to read contents of {}: {e}",
                                         &plist_path.to_str().unwrap()
                                     )
