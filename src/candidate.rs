@@ -852,6 +852,20 @@ impl InstalledProduct {
         Ok(())
     }
 
+    /// Whether this item should be uninstalled -- used primarily on Mac installations where multiple items may inhabit the /Applicatiosn folder
+    pub fn should_uninstall(&self) -> bool {
+        log::trace!(
+            "Checking whether installation item {} should be uninstalled",
+            &self.product_name
+        );
+        if cfg!(macos) {
+            true
+        } else {
+            log::trace!("Not mac or linux, will unconditionally uninstall");
+            true
+        }
+    }
+
     pub fn uninstall(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Uninstalling {}", &self.product_name);
         #[cfg(target_os = "windows")]
